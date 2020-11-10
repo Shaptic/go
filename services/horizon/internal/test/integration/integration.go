@@ -37,6 +37,7 @@ const (
 	adminPort                   = 6060
 	stellarCorePort             = 11626
 	stellarCorePostgresPort     = 5641
+	horizonPostgresPort         = 5642
 	historyArchivePort          = 1570
 )
 
@@ -59,6 +60,8 @@ type Test struct {
 // Warning: this requires Docker Compose installed
 //
 // Skips the test if HORIZON_INTEGRATION_TESTS env variable is not set.
+// Creates a one-off Postgres container for Horizon if
+// HORIZON_INTEGRATION_EXISTING_DB is *not* set.
 func NewTest(t *testing.T, config Config) *Test {
 	if os.Getenv("HORIZON_INTEGRATION_TESTS") == "" {
 		t.Skip("skipping integration test")
@@ -78,8 +81,14 @@ func NewTest(t *testing.T, config Config) *Test {
 		fatalIf(t, innerErr)
 	}
 
-	// Only run Stellar Core container and its dependencies
+	// Only run Stellar Core container and its dependencies...
 	runComposeCommand("up", "--detach", "--quiet-pull", "--no-color", "core")
+
+	// ...unless Postgres is *not* already running on this machine.
+	if os.Getenv("HORIZON_INTEGRATION_EXISTING_DB") == "" {
+		t.Log("Bringing up a Horizon database for testing")
+		runComposeCommand("up", "--detach", "--quiet-pull", "--no-color", "horizon-postgres")
+	}
 
 	// FIXME: Only use horizon from quickstart container when testing captive core
 	if os.Getenv("HORIZON_INTEGRATION_ENABLE_CAPTIVE_CORE") != "" {
@@ -119,6 +128,7 @@ func NewTest(t *testing.T, config Config) *Test {
 
 func (i *Test) startHorizon() {
 	horizonPostgresURL := dbtest.Postgres(i.t).DSN
+	i.t.Log("Using database URI:", horizonPostgresURL)
 
 	config, configOpts := horizon.Flags()
 	cmd := &cobra.Command{

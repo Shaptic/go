@@ -27,7 +27,7 @@ type DB struct {
 	closed  bool
 }
 
-// randomName returns a new psuedo-random name that is sufficient for naming a
+// randomName returns a new pseudo-random name that is sufficient for naming a
 // test database.  In the event that reading from the source of randomness
 // fails, a panic will occur.
 func randomName() string {

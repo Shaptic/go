@@ -23,3 +23,11 @@ services:
     volumes:
       - ./stellar-core-integration-tests.cfg:/stellar-core.cfg
       - ./core-start.sh:/start
+  horizon-postgres:
+    image: postgres:9.6.17-alpine
+    restart: on-failure
+    environment:
+      - POSTGRES_HOST_AUTH_METHOD=trust
+      - POSTGRES_DB=horizon
+    ports:
+      - "5432:5432"
