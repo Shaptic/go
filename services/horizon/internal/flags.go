@@ -96,7 +96,7 @@ func Flags() (*Config, support.ConfigOptions) {
 			OptType:     types.String,
 			FlagDefault: "",
 			Required:    false,
-			Usage:       "path to stellar core binary (--remote-captive-core-url has higher precedence)",
+			Usage:       "path to stellar core binary (--remote-captive-core-url has higher precedence). If captive core is enabled, look in $PATH by default.",
 			ConfigKey:   &config.CaptiveCoreBinaryPath,
 		},
 		&support.ConfigOption{
@@ -409,24 +409,24 @@ func ApplyFlags(config *Config, flags support.ConfigOptions) {
 		// If the user didn't specify a Stellar Core binary, we can check the
 		// $PATH and possibly fill it in for them.
 		if binaryPath == "" {
-			cmd := exec.Command("which", "stellar-core")
-			result, err := cmd.Output()
-			if err == nil {
-				binaryPath = strings.Trim(string(result), "\n")
-				stdLog.Println("Using stellar-core from PATH:", binaryPath)
+			if result, err := exec.LookPath("stellar-core"); err == nil {
+				binaryPath = result
+				stdLog.Println("Found Stellar Core in $PATH:", binaryPath)
+				viper.Set(StellarCoreBinaryPathName, binaryPath)
+				config.CaptiveCoreBinaryPath = binaryPath
 			}
-
-			viper.Set(StellarCoreBinaryPathName, binaryPath)
-			config.CaptiveCoreBinaryPath = binaryPath
 		}
 
 		remoteURL := viper.GetString("remote-captive-core-url")
+
+		// NOTE: If both of these are set, Remote Captive Core takes precedence.
 		if binaryPath == "" && remoteURL == "" {
 			stdLog.Fatalf("Invalid config: captive core requires that either --stellar-core-binary-path or --remote-captive-core-url is set")
 		}
+
+		// If we don't supply an explicit core URL and we are running a local
+		// captive core process with the http port enabled, point to it.
 		if config.StellarCoreURL == "" && config.RemoteCaptiveCoreURL == "" && config.CaptiveCoreHTTPPort != 0 {
-			// If we don't supply an explicit core URL and we are running a local captive core process
-			// with the http port enabled, point to it.
 			config.StellarCoreURL = fmt.Sprintf("http://localhost:%d", config.CaptiveCoreHTTPPort)
 		}
 	}
