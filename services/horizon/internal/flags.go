@@ -5,6 +5,7 @@ import (
 	"go/types"
 	stdLog "log"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -404,6 +405,21 @@ func ApplyFlags(config *Config, flags support.ConfigOptions) {
 
 	if config.EnableCaptiveCoreIngestion {
 		binaryPath := viper.GetString(StellarCoreBinaryPathName)
+
+		// If the user didn't specify a Stellar Core binary, we can check the
+		// $PATH and possibly fill it in for them.
+		if binaryPath == "" {
+			cmd := exec.Command("which", "stellar-core")
+			result, err := cmd.Output()
+			if err == nil {
+				binaryPath = strings.Trim(string(result), "\n")
+				stdLog.Println("Using stellar-core from PATH:", binaryPath)
+			}
+
+			viper.Set(StellarCoreBinaryPathName, binaryPath)
+			config.CaptiveCoreBinaryPath = binaryPath
+		}
+
 		remoteURL := viper.GetString("remote-captive-core-url")
 		if binaryPath == "" && remoteURL == "" {
 			stdLog.Fatalf("Invalid config: captive core requires that either --stellar-core-binary-path or --remote-captive-core-url is set")
@@ -414,6 +430,7 @@ func ApplyFlags(config *Config, flags support.ConfigOptions) {
 			config.StellarCoreURL = fmt.Sprintf("http://localhost:%d", config.CaptiveCoreHTTPPort)
 		}
 	}
+
 	if config.Ingest {
 		// When running live ingestion a config file is required too
 		validateBothOrNeither(StellarCoreBinaryPathName, CaptiveCoreConfigAppendPathName)
