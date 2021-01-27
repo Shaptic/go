@@ -3,6 +3,7 @@ package ledgerbackend
 import (
 	"context"
 	"encoding/hex"
+	"math/rand"
 	"os"
 	"sync"
 
@@ -146,8 +147,11 @@ func NewCaptive(config CaptiveCoreConfig) (*CaptiveStellarCore, error) {
 	var cancel context.CancelFunc
 	config.Context, cancel = context.WithCancel(parentCtx)
 
+	// Choose a random history archive URL from the config instead of the first
+	// (or any specific) one so that listing multiple HAs actually has impact.
+	index := rand.Intn(len(config.HistoryArchiveURLs))
 	archive, err := historyarchive.Connect(
-		config.HistoryArchiveURLs[0],
+		config.HistoryArchiveURLs[index],
 		historyarchive.ConnectOptions{
 			NetworkPassphrase:   config.NetworkPassphrase,
 			CheckpointFrequency: config.CheckpointFrequency,
