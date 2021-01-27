@@ -141,55 +141,48 @@ func NewCaptive(config CaptiveCoreConfig) (*CaptiveStellarCore, error) {
 		config.Log.SetLevel(logrus.InfoLevel)
 	}
 
-	// Try all of the history archives at random until one succeeds or the list
-	// is exhausted.
-	archives := config.HistoryArchiveURLs // copy list
-	for len(archives) > 0 {
-		parentCtx := config.Context
-		if parentCtx == nil {
-			parentCtx = context.Background()
-		}
-		var cancel context.CancelFunc
-		config.Context, cancel = context.WithCancel(parentCtx)
+	parentCtx := config.Context
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
+	var cancel context.CancelFunc
+	config.Context, cancel = context.WithCancel(parentCtx)
 
-		// Choose a random history archive URL from the config instead of the first
-		// (or any specific) one so that listing multiple HAs actually has impact.
-		index := rand.Intn(len(archives))
-		archive, err := historyarchive.Connect(
-			archives[index],
-			historyarchive.ConnectOptions{
-				NetworkPassphrase:   config.NetworkPassphrase,
-				CheckpointFrequency: config.CheckpointFrequency,
-				Context:             config.Context,
-			},
-		)
+	// Choose a random history archive URL from the config instead of the first
+	// (or any specific) one so that listing multiple HAs actually has impact.
+	index := rand.Intn(len(archives))
+	archive, err := historyarchive.ConnectAny(
+		archives[index],
+		historyarchive.ConnectOptions{
+			NetworkPassphrase:   config.NetworkPassphrase,
+			CheckpointFrequency: config.CheckpointFrequency,
+			Context:             config.Context,
+		},
+	)
 
-		if err != nil {
-			cancel()
-			if config.Log != nil {
-				config.Log.Warnf("error connecting to history archive %s: %s\n",
-					archives[index], err)
-			}
-
-			// Drop the history archive from the list of choices and try again.
-			archives = append(archives[:index], archives[index+1:]...)
-			continue
+	if err != nil {
+		cancel()
+		if config.Log != nil {
+			config.Log.Warnf("error connecting to history archive %s: %s\n",
+				archives[index], err)
 		}
 
-		c := &CaptiveStellarCore{
-			archive:           archive,
-			ledgerHashStore:   config.LedgerHashStore,
-			cancel:            cancel,
-			checkpointManager: historyarchive.NewCheckpointManager(config.CheckpointFrequency),
-		}
-
-		c.stellarCoreRunnerFactory = func(mode stellarCoreRunnerMode) (stellarCoreRunnerInterface, error) {
-			return newStellarCoreRunner(config, mode)
-		}
-		return c, nil
+		// Drop the history archive from the list of choices and try again.
+		archives = append(archives[:index], archives[index+1:]...)
+		continue
 	}
 
-	return nil, errors.New("failed to connect to any history archives")
+	c := &CaptiveStellarCore{
+		archive:           archive,
+		ledgerHashStore:   config.LedgerHashStore,
+		cancel:            cancel,
+		checkpointManager: historyarchive.NewCheckpointManager(config.CheckpointFrequency),
+	}
+
+	c.stellarCoreRunnerFactory = func(mode stellarCoreRunnerMode) (stellarCoreRunnerInterface, error) {
+		return newStellarCoreRunner(config, mode)
+	}
+	return c, nil
 }
 
 func (c *CaptiveStellarCore) getLatestCheckpointSequence() (uint32, error) {
