@@ -350,7 +350,7 @@ func ConnectAny(urls []string, opts ConnectOptions) (*Archive, error) {
 		return archive, nil
 	}
 
-	return nil, errors.Wrap(outerErr, "failed to connect to any history archive")
+	return nil, outerErr
 }
 
 func MustConnect(u string, opts ConnectOptions) *Archive {

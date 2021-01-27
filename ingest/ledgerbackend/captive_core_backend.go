@@ -3,7 +3,6 @@ package ledgerbackend
 import (
 	"context"
 	"encoding/hex"
-	"math/rand"
 	"os"
 	"sync"
 
@@ -140,7 +139,6 @@ func NewCaptive(config CaptiveCoreConfig) (*CaptiveStellarCore, error) {
 		config.Log.Logger.SetOutput(os.Stdout)
 		config.Log.SetLevel(logrus.InfoLevel)
 	}
-
 	parentCtx := config.Context
 	if parentCtx == nil {
 		parentCtx = context.Background()
@@ -148,11 +146,8 @@ func NewCaptive(config CaptiveCoreConfig) (*CaptiveStellarCore, error) {
 	var cancel context.CancelFunc
 	config.Context, cancel = context.WithCancel(parentCtx)
 
-	// Choose a random history archive URL from the config instead of the first
-	// (or any specific) one so that listing multiple HAs actually has impact.
-	index := rand.Intn(len(archives))
 	archive, err := historyarchive.ConnectAny(
-		archives[index],
+		config.HistoryArchiveURLs,
 		historyarchive.ConnectOptions{
 			NetworkPassphrase:   config.NetworkPassphrase,
 			CheckpointFrequency: config.CheckpointFrequency,
@@ -162,14 +157,7 @@ func NewCaptive(config CaptiveCoreConfig) (*CaptiveStellarCore, error) {
 
 	if err != nil {
 		cancel()
-		if config.Log != nil {
-			config.Log.Warnf("error connecting to history archive %s: %s\n",
-				archives[index], err)
-		}
-
-		// Drop the history archive from the list of choices and try again.
-		archives = append(archives[:index], archives[index+1:]...)
-		continue
+		return nil, errors.Wrap(err, "error connecting to history archive")
 	}
 
 	c := &CaptiveStellarCore{
