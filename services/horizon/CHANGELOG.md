@@ -3,7 +3,9 @@
 All notable changes to this project will be documented in this
 file. This project adheres to [Semantic Versioning](http://semver.org/).
 
+
 ## Unreleased
+
 
 ## v2.3.0
 
@@ -19,6 +21,9 @@ checking if there are any migrations required to start Horizon ([3557](https://g
 * Refactor ingestion library to hide `TransactionMeta` field ([3561](https://github.com/stellar/go/pull/3561)).
 
 * Improvements to session handling and timeouts ([3576](https://github.com/stellar/go/pull/3576), [3545](https://github.com/stellar/go/pull/3545), and [3567](https://github.com/stellar/go/pull/3567)).
+
+* Improvements to parsing logic for Captive Core's TOML configuration ([3558](https://github.com/stellar/go/pull/3558)).
+
 
 ## v2.2.0
 
