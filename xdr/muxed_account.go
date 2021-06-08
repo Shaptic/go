@@ -170,7 +170,30 @@ func (m *MuxedAccount) GetAddress() (string, error) {
 	default:
 		return "", fmt.Errorf("Unknown muxed account type: %v", m.Type)
 	}
+}
 
+// GetId retrieves the underlying memo ID if this is a fully muxed account. It
+// will return an error if the muxed account does not have a memo ID (i.e it's
+// of the key type Ed25519).
+func (m *MuxedAccount) GetId() (uint64, error) {
+	if m == nil {
+		return 0, nil
+	}
+
+	switch m.Type {
+	case CryptoKeyTypeKeyTypeEd25519:
+		return 0, errors.New("muxed account has no ID")
+
+	case CryptoKeyTypeKeyTypeMuxedEd25519:
+		ed, ok := m.GetMed25519()
+		if !ok {
+			return 0, errors.New("could not get Med25519")
+		}
+		return uint64(ed.Id), nil
+
+	default:
+		return 0, fmt.Errorf("Unknown muxed account type: %v", m.Type)
+	}
 }
 
 // ToAccountId transforms a MuxedAccount to an AccountId, dropping the
