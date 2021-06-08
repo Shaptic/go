@@ -41,7 +41,7 @@ var _ = Describe("xdr.MuxedAccount#Get/SetAddress()", func() {
 		Expect(muxed.Med25519.Id).To(Equal(Uint64(0)))
 		Expect(muxed.Med25519.Ed25519).To(Equal(*unmuxed.Ed25519))
 		id, err = muxed.GetId()
-		Expect(id).To(Equal(0))
+		Expect(id).To(Equal(uint64(0)))
 		muxedy = muxed.Address()
 		Expect(muxedy).To(Equal("MA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJUAAAAAAAAAAAACJUQ"))
 	})
