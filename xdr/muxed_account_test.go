@@ -40,6 +40,16 @@ var _ = Describe("xdr.MuxedAccount#Get/SetAddress()", func() {
 		Expect(muxedy).To(Equal("MA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJUAAAAAAAAAAAACJUQ"))
 	})
 
+	It("returns a muxed account from an account ID and memo", func() {
+		accountId := "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ"
+		expectedMuxedId := "MA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJUAAAAAAAAAABUTGI4"
+
+		muxedAccount, err := MuxedAccountFromAccountId(accountId, uint64(420))
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(muxedAccount.GetAddress()).To(Equal(expectedMuxedId))
+		Expect(muxedAccount.GetId()).To(Equal(uint64(420)))
+	})
+
 	It("returns an error when the strkey is invalid", func() {
 		var muxed MuxedAccount
 

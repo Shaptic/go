@@ -21,6 +21,43 @@ func MustMuxedAddressPtr(address string) *MuxedAccount {
 	return &muxed
 }
 
+func MuxedAccountFromAccountId(gAddress string, id uint64) (MuxedAccount, error) {
+	bytes, err := strkey.Decode(strkey.VersionByteAccountID, gAddress)
+	if err != nil {
+		return MuxedAccount{}, err
+	}
+
+	var publicKey Uint256
+	copy(publicKey[:], bytes)
+
+	muxed, err := NewMuxedAccount(
+		CryptoKeyTypeKeyTypeMuxedEd25519,
+		MuxedAccountMed25519{
+			Id:      Uint64(id),
+			Ed25519: publicKey,
+		},
+	)
+	if err != nil {
+		return MuxedAccount{}, err
+	}
+
+	keyBytes, err := muxed.Med25519.Ed25519.MarshalBinary()
+	if err != nil {
+		return MuxedAccount{}, err
+	}
+
+	idBytes, err := muxed.Med25519.Id.MarshalBinary()
+	if err != nil {
+		return MuxedAccount{}, err
+	}
+
+	mAddress := strkey.MustEncode(
+		strkey.VersionByteMuxedAccount,
+		append(keyBytes, idBytes...),
+	)
+	return AddressToMuxedAccount(mAddress)
+}
+
 // SetEd25519Address modifies the receiver, setting it's value to the MuxedAccount form
 // of the provided G-address. Unlike SetAddress(), it only supports G-addresses.
 func (m *MuxedAccount) SetEd25519Address(address string) error {
