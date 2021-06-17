@@ -22,19 +22,16 @@ func MustMuxedAddressPtr(address string) *MuxedAccount {
 }
 
 func MuxedAccountFromAccountId(gAddress string, id uint64) (MuxedAccount, error) {
-	bytes, err := strkey.Decode(strkey.VersionByteAccountID, gAddress)
+	accountId, err := AddressToAccountId(gAddress)
 	if err != nil {
 		return MuxedAccount{}, err
 	}
-
-	var publicKey Uint256
-	copy(publicKey[:], bytes)
 
 	return NewMuxedAccount(
 		CryptoKeyTypeKeyTypeMuxedEd25519,
 		MuxedAccountMed25519{
 			Id:      Uint64(id),
-			Ed25519: publicKey,
+			Ed25519: accountId.MustEd25519(),
 		},
 	)
 }
