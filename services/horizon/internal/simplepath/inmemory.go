@@ -1,6 +1,8 @@
 package simplepath
 
 import (
+	"context"
+
 	"github.com/go-errors/errors"
 	"github.com/stellar/go/exp/orderbook"
 	"github.com/stellar/go/services/horizon/internal/paths"
@@ -32,7 +34,7 @@ func NewInMemoryFinder(graph *orderbook.OrderBookGraph) InMemoryFinder {
 }
 
 // Find implements the path payments finder interface
-func (finder InMemoryFinder) Find(q paths.Query, maxLength uint) ([]paths.Path, uint32, error) {
+func (finder InMemoryFinder) Find(ctx context.Context, q paths.Query, maxLength uint) ([]paths.Path, uint32, error) {
 	if finder.graph.IsEmpty() {
 		return nil, 0, ErrEmptyInMemoryOrderBook
 	}
@@ -44,27 +46,57 @@ func (finder InMemoryFinder) Find(q paths.Query, maxLength uint) ([]paths.Path, 
 		return nil, 0, errors.New("invalid value of maxLength")
 	}
 
-	orderbookPaths, lastLedger, err := finder.graph.FindPaths(
-		int(maxLength),
-		q.DestinationAsset,
-		q.DestinationAmount,
-		q.SourceAccount,
-		q.SourceAssets,
-		q.SourceAssetBalances,
-		q.ValidateSourceBalance,
-		maxAssetsPerPath,
-	)
-	results := make([]paths.Path, len(orderbookPaths))
-	for i, path := range orderbookPaths {
-		results[i] = paths.Path{
-			Path:              path.InteriorNodes,
-			Source:            path.SourceAsset,
-			SourceAmount:      path.SourceAmount,
-			Destination:       path.DestinationAsset,
-			DestinationAmount: path.DestinationAmount,
+	done := make(chan error)
+	var orderbookPaths []orderbook.Path
+	var lastLedger uint32
+
+	go func() {
+		var err error
+		orderbookPaths, lastLedger, err = finder.graph.FindPaths(
+			int(maxLength),
+			q.DestinationAsset,
+			q.DestinationAmount,
+			q.SourceAccount,
+			q.SourceAssets,
+			q.SourceAssetBalances,
+			q.ValidateSourceBalance,
+			maxAssetsPerPath,
+		)
+
+		if err != nil {
+			done <- err
+		} else {
+			done <- nil
+		}
+		close(done)
+	}()
+
+	var results []paths.Path
+
+	for {
+		select {
+		case err := <-done:
+			if err != nil {
+				return results, lastLedger, err
+			}
+
+			results = make([]paths.Path, len(orderbookPaths))
+			for i, path := range orderbookPaths {
+				results[i] = paths.Path{
+					Path:              path.InteriorNodes,
+					Source:            path.SourceAsset,
+					SourceAmount:      path.SourceAmount,
+					Destination:       path.DestinationAsset,
+					DestinationAmount: path.DestinationAmount,
+				}
+			}
+			return results, lastLedger, err
+
+		case <-ctx.Done():
+			// What happens to the go func()() now???
+			return results, 0, context.DeadlineExceeded
 		}
 	}
-	return results, lastLedger, err
 }
 
 // FindFixedPaths returns a list of payment paths where the source and destination

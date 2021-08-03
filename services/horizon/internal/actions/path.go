@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/stellar/go/amount"
 	"github.com/stellar/go/protocols/horizon"
@@ -16,6 +17,10 @@ import (
 	"github.com/stellar/go/support/render/hal"
 	"github.com/stellar/go/support/render/problem"
 	"github.com/stellar/go/xdr"
+)
+
+const (
+	PathfindingTimeout = 15
 )
 
 // FindPathsHandler is the http handler for the find payment paths endpoint
@@ -148,10 +153,18 @@ func (handler FindPathsHandler) GetResource(w HeaderWriter, r *http.Request) (in
 
 	records := []paths.Path{}
 	if len(query.SourceAssets) > 0 {
+		// Pathfinding can be too slow sometimes, so let's cap the amount of
+		// time it takes.
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*PathfindingTimeout)
+		defer cancel()
+
 		var lastIngestedLedger uint32
-		records, lastIngestedLedger, err = handler.PathFinder.Find(query, handler.MaxPathLength)
+		records, lastIngestedLedger, err = handler.PathFinder.Find(ctx, query, handler.MaxPathLength)
+
 		if err == simplepath.ErrEmptyInMemoryOrderBook {
 			err = horizonProblem.StillIngesting
+		} else if err == context.DeadlineExceeded {
+			err = horizonProblem.Timeout
 		}
 		if err != nil {
 			return nil, err
