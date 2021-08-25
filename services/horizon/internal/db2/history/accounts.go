@@ -366,6 +366,11 @@ func (q *Q) AccountEntriesForSigner(ctx context.Context, signer string, page db2
 	return results, nil
 }
 
+// AccountEntriesForLiquidityPool returns a list of `AccountEntry` rows for a given liquidity pool ID.
+func (q *Q) AccountEntriesForLiquidityPool(ctx context.Context, poolId string, page db2.PageQuery) ([]AccountEntry, error) {
+	return nil, errors.New("filtering by liquidity pool is not implemented")
+}
+
 var selectAccounts = sq.Select(`
 	account_id,
 	balance,
