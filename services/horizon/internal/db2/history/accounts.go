@@ -366,9 +366,30 @@ func (q *Q) AccountEntriesForSigner(ctx context.Context, signer string, page db2
 	return results, nil
 }
 
-// AccountEntriesForLiquidityPool returns a list of `AccountEntry` rows for a given liquidity pool ID.
+// AccountEntriesForLiquidityPool returns a list of `AccountEntry` rows that
+// have trustlines established with a given liquidity pool ID.
 func (q *Q) AccountEntriesForLiquidityPool(ctx context.Context, poolId string, page db2.PageQuery) ([]AccountEntry, error) {
 	return nil, errors.New("filtering by liquidity pool is not implemented")
+
+	sql := sq.
+		Select("accounts.*").
+		From("accounts").
+		Join("trust_lines ON accounts.account_id = trust_lines.account_id").
+		Where(map[string]interface{}{
+			"trust_lines.liquidity_pool_id": poolId,
+		})
+
+	sql, err := page.ApplyToUsingCursor(sql, "trust_lines.liquidity_pool_id", page.Cursor)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not apply query to page")
+	}
+
+	var results []AccountEntry
+	if err := q.Select(ctx, &results, sql); err != nil {
+		return nil, errors.Wrap(err, "could not run select query")
+	}
+
+	return results, nil
 }
 
 var selectAccounts = sq.Select(`
