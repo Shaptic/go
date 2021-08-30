@@ -84,7 +84,7 @@ var invalidAccountsParams = problem.P{
 	Type:   "invalid_accounts_params",
 	Title:  "Invalid Accounts Parameters",
 	Status: http.StatusBadRequest,
-	Detail: "Exactly one filter is required. Please ensure that you are including a signer, a sponsor, an asset, or a liquidity pool filter.",
+	Detail: "Exactly one filter is required. Please ensure that you are including a signer, sponsor, asset, or liquidity pool filter.",
 }
 
 // Validate runs custom validations.
