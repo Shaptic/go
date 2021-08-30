@@ -125,7 +125,8 @@ type GetAccountsHandler struct {
 }
 
 // GetResourcePage returns a page containing the account records that have
-// `signer` as a signer or have a trustline to the given asset.
+// `signer` as a signer, `sponsor` as a sponsor, a trustline to the given
+// `asset`, or participate in a particular `liquidity_pool`.
 func (handler GetAccountsHandler) GetResourcePage(
 	w HeaderWriter,
 	r *http.Request,

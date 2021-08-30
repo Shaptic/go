@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	protocol "github.com/stellar/go/protocols/horizon"
+	"github.com/stellar/go/services/horizon/internal/assets"
 	horizonContext "github.com/stellar/go/services/horizon/internal/context"
 	"github.com/stellar/go/services/horizon/internal/db2/history"
 	"github.com/stellar/go/support/errors"
@@ -47,7 +48,24 @@ func PopulateAccountEntry(
 	// populate balances
 	dest.Balances = make([]protocol.Balance, len(trustLines)+1)
 	for i, tl := range trustLines {
-		err := PopulateBalance(&dest.Balances[i], tl)
+		var err error
+
+		switch tl.AssetType {
+		case xdr.AssetTypeAssetTypeCreditAlphanum4:
+			fallthrough
+		case xdr.AssetTypeAssetTypeCreditAlphanum12:
+			err = PopulateAssetBalance(&dest.Balances[i], tl)
+		case xdr.AssetTypeAssetTypePoolShare:
+			err = PopulatePoolShareBalance(&dest.Balances[i], tl)
+		default:
+			assetType, innerErr := assets.String(tl.AssetType)
+			if innerErr != nil {
+				err = innerErr
+			} else {
+				err = errors.New("unknown asset in balance:" + assetType)
+			}
+		}
+
 		if err != nil {
 			return errors.Wrap(err, "populating balance")
 		}
