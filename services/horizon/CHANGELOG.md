@@ -11,8 +11,10 @@ file. This project adheres to [Semantic Versioning](http://semver.org/).
 ### Add
 * Add a feature flag `--captive-core-reuse-storage-path`/`CAPTIVE_CORE_REUSE_STORAGE_PATH` that will reuse Captive Core's storage path for bucket files when applicable for better performance ([3750](https://github.com/stellar/go/pull/3750)).
 
-* Add the ability to filter accounts by their participation in a particular liquidity pool ([TODO](https://github.com/stellar/go/pull/TODO)).
+* Add the ability to filter accounts by their participation in a particular liquidity pool ([3873](https://github.com/stellar/go/pull/3873)).
 
+### Update
+* Include pool shares in account balances ([3873](https://github.com/stellar/go/pull/3873)).
 
 ## v2.6.1
 
