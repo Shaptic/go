@@ -186,8 +186,16 @@ func TestPopulateAccountEntry(t *testing.T) {
 		tt.Equal(wantType, ht.Type)
 
 		tt.Equal(amount.StringFromInt64(t.Balance), ht.Balance)
-		tt.Equal(amount.StringFromInt64(t.BuyingLiabilities), ht.BuyingLiabilities)
-		tt.Equal(amount.StringFromInt64(t.SellingLiabilities), ht.SellingLiabilities)
+		if t.BuyingLiabilities != 0 {
+			tt.Equal(amount.StringFromInt64(t.BuyingLiabilities), ht.BuyingLiabilities)
+		} else {
+			tt.Equal("", ht.BuyingLiabilities)
+		}
+		if t.SellingLiabilities != 0 {
+			tt.Equal(amount.StringFromInt64(t.SellingLiabilities), ht.SellingLiabilities)
+		} else {
+			tt.Equal("", ht.SellingLiabilities)
+		}
 		tt.Equal(amount.StringFromInt64(t.Limit), ht.Limit)
 		tt.Equal(t.LastModifiedLedger, ht.LastModifiedLedger)
 		tt.Equal(t.IsAuthorized(), *ht.IsAuthorized)

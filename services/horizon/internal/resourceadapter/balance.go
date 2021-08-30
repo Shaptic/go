@@ -69,11 +69,15 @@ func PopulateNativeBalance(dest *protocol.Balance, stroops, buyingLiabilities, s
 func fillAuthorizationFlags(dest *protocol.Balance, row history.TrustLine) {
 	isAuthorized := row.IsAuthorized()
 	dest.IsAuthorized = &isAuthorized
+
+	// After CAP-18, isAuth => isAuthToMaintain, so the following code does this
+	// in a backwards compatible manner.
 	dest.IsAuthorizedToMaintainLiabilities = &isAuthorized
 	isAuthorizedToMaintainLiabilities := row.IsAuthorizedToMaintainLiabilities()
 	if isAuthorizedToMaintainLiabilities {
 		dest.IsAuthorizedToMaintainLiabilities = &isAuthorizedToMaintainLiabilities
 	}
+
 	isClawbackEnabled := row.IsClawbackEnabled()
 	if isClawbackEnabled {
 		dest.IsClawbackEnabled = &isClawbackEnabled
