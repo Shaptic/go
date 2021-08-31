@@ -185,7 +185,6 @@ func TestPopulateAccountEntry(t *testing.T) {
 		if t.AssetType == xdr.AssetTypeAssetTypePoolShare {
 			wantType = "liquidity_pool_shares"
 		} else {
-			var err error
 			wantType, err = assets.String(t.AssetType)
 			tt.NoError(err)
 		}
