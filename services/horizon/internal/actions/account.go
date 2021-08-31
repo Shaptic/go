@@ -72,7 +72,7 @@ type AccountsQuery struct {
 	Signer        string `schema:"signer" valid:"accountID,optional"`
 	Sponsor       string `schema:"sponsor" valid:"accountID,optional"`
 	AssetFilter   string `schema:"asset" valid:"asset,optional"`
-	LiquidityPool string `schema:"liquidity_pool" valid:"liquidity_pool,optional"`
+	LiquidityPool string `schema:"liquidity_pool" valid:"sha256,optional"`
 }
 
 // URITemplate returns a rfc6570 URI template the query struct
@@ -161,7 +161,7 @@ func (handler GetAccountsHandler) GetResourcePage(
 			return nil, errors.Wrap(err, "loading account records")
 		}
 	} else if len(qp.LiquidityPool) > 0 {
-		records, err = historyQ.AccountEntriesForLiquidityPool(ctx, qp.LiquidityPool, pq)
+		records, err = historyQ.AccountsForLiquidityPool(ctx, qp.LiquidityPool, pq)
 		if err != nil {
 			return nil, errors.Wrap(err, "loading account records")
 		}

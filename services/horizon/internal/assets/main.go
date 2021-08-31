@@ -15,10 +15,9 @@ var ErrInvalidValue = errors.New("unknown asset type, cannot convert to string")
 // AssetTypeMap is the read-only (i.e. don't modify it) map from string names to
 // xdr.AssetType values
 var AssetTypeMap = map[string]xdr.AssetType{
-	"native":                xdr.AssetTypeAssetTypeNative,
-	"credit_alphanum4":      xdr.AssetTypeAssetTypeCreditAlphanum4,
-	"credit_alphanum12":     xdr.AssetTypeAssetTypeCreditAlphanum12,
-	"liquidity_pool_shares": xdr.AssetTypeAssetTypePoolShare,
+	"native":            xdr.AssetTypeAssetTypeNative,
+	"credit_alphanum4":  xdr.AssetTypeAssetTypeCreditAlphanum4,
+	"credit_alphanum12": xdr.AssetTypeAssetTypeCreditAlphanum12,
 }
 
 //Parse creates an asset from the provided strings.  See AssetTypeMap for valid strings for aType.
