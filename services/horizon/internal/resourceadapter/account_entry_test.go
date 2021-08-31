@@ -181,8 +181,14 @@ func TestPopulateAccountEntry(t *testing.T) {
 		ht := hAccount.Balances[i]
 		tt.Equal(t.AssetIssuer, ht.Issuer)
 		tt.Equal(t.AssetCode, ht.Code)
-		wantType, e := assets.String(t.AssetType)
-		tt.NoError(e)
+		var wantType string
+		if t.AssetType == xdr.AssetTypeAssetTypePoolShare {
+			wantType = "liquidity_pool_shares"
+		} else {
+			var err error
+			wantType, err = assets.String(t.AssetType)
+			tt.NoError(err)
+		}
 		tt.Equal(wantType, ht.Type)
 
 		tt.Equal(amount.StringFromInt64(t.Balance), ht.Balance)

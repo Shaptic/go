@@ -10,12 +10,17 @@ import (
 )
 
 func PopulatePoolShareBalance(dest *protocol.Balance, row history.TrustLine) (err error) {
-	dest.Type, err = assets.String(row.AssetType)
-	if err != nil {
-		return err
-	}
-	if dest.Type != "liquidity_pool_shares" {
-		return PopulateAssetBalance(dest, row)
+	if row.AssetType == xdr.AssetTypeAssetTypePoolShare {
+		dest.Type = "liquidity_pool_shares"
+	} else {
+		dest.Type, err = assets.String(row.AssetType)
+		if err != nil {
+			return err
+		}
+
+		if dest.Type != "liquidity_pool_shares" {
+			return PopulateAssetBalance(dest, row)
+		}
 	}
 
 	dest.Balance = amount.StringFromInt64(row.Balance)
