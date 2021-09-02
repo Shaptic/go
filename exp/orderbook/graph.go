@@ -2,6 +2,7 @@ package orderbook
 
 import (
 	"context"
+	"math/big"
 	"sort"
 	"sync"
 
@@ -477,4 +478,128 @@ func sortAndFilterPaths(
 	}
 
 	return filtered, nil
+}
+
+// makeTrade simulates execution of an exchange with a liquidity pool.
+//
+// It returns the amount that would be paid out by the pool for depositing
+// `amount` of `asset` alongside the new state of the liquidity pool after this
+// exchange, or an error. Errors can occur because of negative amounts, invalid
+// assets, invalid pools, XDR issues, etc.
+//
+// Refer to https://github.com/stellar/stellar-protocol/blob/master/core/cap-0038.md#pathpaymentstrictsendop-and-pathpaymentstrictreceiveop
+// for details on the exchange algorithm.
+func makeTrade(
+	asset xdr.Asset,
+	deposit xdr.Int64,
+	pool xdr.LiquidityPoolEntry,
+) (payout xdr.Int64, newPool xdr.LiquidityPoolEntry, err error) {
+	details, ok := pool.Body.GetConstantProduct()
+	if !ok {
+		err = errors.New("Liquidity pool unsupported: not constant product")
+		return
+	}
+
+	if !isAssetInLiquidityPool(asset, pool) {
+		err = errors.New("Can't exchange asset against liquidity pool")
+		return
+	}
+
+	if deposit <= 0 {
+		err = errors.New("invalid (<= 0) exchange amount")
+		return
+	}
+
+	X, Y := details.ReserveA, details.ReserveB
+	exchangeReserve := details.ReserveB // amount of "other" asset in pool
+	isAssetA := details.Params.AssetA.Equals(asset)
+	if !isAssetA { // swap
+		X, Y = details.ReserveA, details.ReserveB
+		exchangeReserve = details.ReserveB
+	}
+
+	payout, ok = calculatePoolPayout(X, Y, deposit, details.Params.Fee)
+	if !ok {
+		err = errors.New("Liquidity pool overflows from this exchange")
+		return
+	}
+
+	if payout < exchangeReserve {
+		err = errors.New("Not enough reserve for this exchange")
+		return
+	}
+
+	newPool, err = copyPoolState(pool)
+	if err != nil {
+		err = errors.Wrap(err, "Failed to duplicate LP state")
+		return
+	}
+
+	newDetails := newPool.Body.MustConstantProduct() // safe
+
+	// Adjust reserves based on this exchange with the LP. Note that pool shares
+	// don't change because the exchange doesn't make you an actual participant
+	// in the pool.
+	if isAssetA {
+		newDetails.ReserveA += deposit
+		newDetails.ReserveB -= payout
+	} else {
+		newDetails.ReserveB += deposit
+		newDetails.ReserveA -= payout
+	}
+
+	return
+}
+
+// isAssetInLiquidityPool will tell you if `asset` is a reserve in `pool`,
+// silently failing for pools that aren't constant product.
+func isAssetInLiquidityPool(asset xdr.Asset, pool xdr.LiquidityPoolEntry) bool {
+	details, ok := pool.Body.GetConstantProduct()
+	return ok && (details.Params.AssetA.Equals(asset) || details.Params.AssetB.Equals(asset))
+}
+
+// copyPoolState returns a duplicate of the given pool entry.
+//
+// This isn't idiomatic, but works in a pinch.
+// FIXME: What's a better way to make copies of XDR objects?
+func copyPoolState(pool xdr.LiquidityPoolEntry) (xdr.LiquidityPoolEntry, error) {
+	var newPool xdr.LiquidityPoolEntry
+	oldPoolState, err := pool.MarshalBinary()
+	if err != nil {
+		return newPool, err
+	}
+
+	err = newPool.UnmarshalBinary(oldPoolState)
+	if err != nil {
+		return newPool, err
+	}
+
+	return newPool, nil
+}
+
+// calculateAmountDisbursed calculates the pool payout. From CAP-38:
+//
+//      y = floor[(1 - F) Yx / (X + x - Fx)]
+//
+// It returns false if the calculation overflows.
+func calculatePoolPayout(reserveA, reserveB, received xdr.Int64, fee xdr.Int32) (xdr.Int64, bool) {
+	X, Y := big.NewInt(int64(reserveA)), big.NewInt(int64(reserveB))
+	F, x := big.NewInt(int64(fee)), big.NewInt(int64(received))
+
+	// right half: X+x-Fx
+	tempB := new(big.Int)
+	tempB.Set(x).Mul(tempB, F)
+	X.Add(X, x).Sub(X, tempB)
+
+	// left half: (1-F)Yx
+	tempA := big.NewInt(1)
+	tempA.Sub(tempA, F).Mul(tempA, Y).Mul(tempA, x)
+
+	// avoid div-by-zero panic
+	if X.Cmp(big.NewInt(0)) == 0 {
+		return xdr.Int64(0), false
+	}
+
+	quotient := tempA.Div(tempA, X) // floors
+	return xdr.Int64(quotient.Int64()), quotient.IsInt64()
 }
