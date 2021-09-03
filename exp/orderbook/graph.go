@@ -492,9 +492,9 @@ func sortAndFilterPaths(
 // for details on the exchange algorithm.
 func makeTrade(
 	asset xdr.Asset,
-	deposit int64,
+	deposit uint32,
 	pool xdr.LiquidityPoolEntry,
-) (payout int64, newPool xdr.LiquidityPoolEntry, err error) {
+) (payout uint32, newPool xdr.LiquidityPoolEntry, err error) {
 	details, ok := pool.Body.GetConstantProduct()
 	if !ok {
 		err = errors.New("Liquidity pool unsupported: not constant product")
@@ -503,11 +503,6 @@ func makeTrade(
 
 	if !isAssetInLiquidityPool(asset, pool) {
 		err = errors.New("Can't exchange asset against liquidity pool")
-		return
-	}
-
-	if deposit <= 0 {
-		err = errors.New("invalid (<= 0) exchange amount")
 		return
 	}
 
@@ -540,7 +535,7 @@ func makeTrade(
 		return
 	}
 
-	payout = int64(payoutXdr)
+	payout = uint32(payoutXdr)
 	newDetails := newPool.Body.ConstantProduct
 
 	// Adjust reserves based on this exchange with the LP. Note that pool shares
@@ -588,7 +583,7 @@ func calculatePoolPayout(reserveA, reserveB, received xdr.Int64, fee xdr.Int32) 
 	isOutOfRange := ((payout == math.MinInt64 && accuracy == big.Above) ||
 		(payout == math.MaxInt64 && accuracy == big.Below))
 
-	return xdr.Int64(payout), !isOutOfRange
+	return xdr.Int64(payout), !isOutOfRange && payout >= 0
 }
 
 // copyPoolState returns a duplicate of the given pool entry.
