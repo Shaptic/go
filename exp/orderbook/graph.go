@@ -2,6 +2,7 @@ package orderbook
 
 import (
 	"context"
+	"math"
 	"math/big"
 	"sort"
 	"sync"
@@ -491,9 +492,9 @@ func sortAndFilterPaths(
 // for details on the exchange algorithm.
 func makeTrade(
 	asset xdr.Asset,
-	deposit xdr.Int64,
+	deposit int64,
 	pool xdr.LiquidityPoolEntry,
-) (payout xdr.Int64, newPool xdr.LiquidityPoolEntry, err error) {
+) (payout int64, newPool xdr.LiquidityPoolEntry, err error) {
 	details, ok := pool.Body.GetConstantProduct()
 	if !ok {
 		err = errors.New("Liquidity pool unsupported: not constant product")
@@ -510,21 +511,25 @@ func makeTrade(
 		return
 	}
 
+	depositXdr := xdr.Int64(deposit)
 	X, Y := details.ReserveA, details.ReserveB
 	exchangeReserve := details.ReserveB // amount of "other" asset in pool
+
+	// if necessary, swap the assets
 	isAssetA := details.Params.AssetA.Equals(asset)
-	if !isAssetA { // swap
-		X, Y = details.ReserveA, details.ReserveB
-		exchangeReserve = details.ReserveB
+	if !isAssetA {
+		X, Y = details.ReserveB, details.ReserveA
+		exchangeReserve = details.ReserveA
 	}
 
-	payout, ok = calculatePoolPayout(X, Y, deposit, details.Params.Fee)
+	payoutXdr, ok := calculatePoolPayout(X, Y, depositXdr, details.Params.Fee)
+
 	if !ok {
 		err = errors.New("Liquidity pool overflows from this exchange")
 		return
 	}
 
-	if payout < exchangeReserve {
+	if payoutXdr > exchangeReserve {
 		err = errors.New("Not enough reserve for this exchange")
 		return
 	}
@@ -535,33 +540,58 @@ func makeTrade(
 		return
 	}
 
-	newDetails := newPool.Body.MustConstantProduct() // safe
+	payout = int64(payoutXdr)
+	newDetails := newPool.Body.ConstantProduct
 
 	// Adjust reserves based on this exchange with the LP. Note that pool shares
 	// don't change because the exchange doesn't make you an actual participant
 	// in the pool.
 	if isAssetA {
-		newDetails.ReserveA += deposit
-		newDetails.ReserveB -= payout
+		newDetails.ReserveA += depositXdr
+		newDetails.ReserveB -= payoutXdr
 	} else {
-		newDetails.ReserveB += deposit
-		newDetails.ReserveA -= payout
+		newDetails.ReserveB += depositXdr
+		newDetails.ReserveA -= payoutXdr
 	}
 
 	return
 }
 
-// isAssetInLiquidityPool will tell you if `asset` is a reserve in `pool`,
-// silently failing for pools that aren't constant product.
-func isAssetInLiquidityPool(asset xdr.Asset, pool xdr.LiquidityPoolEntry) bool {
-	details, ok := pool.Body.GetConstantProduct()
-	return ok && (details.Params.AssetA.Equals(asset) || details.Params.AssetB.Equals(asset))
+// calculateAmountDisbursed calculates the pool payout. From CAP-38:
+//
+//      y = floor[(1 - F) Yx / (X + x - Fx)]
+//
+// It returns false if the calculation overflows.
+func calculatePoolPayout(reserveA, reserveB, received xdr.Int64, fee xdr.Int32) (xdr.Int64, bool) {
+	X, Y := big.NewFloat(float64(reserveA)), big.NewFloat(float64(reserveB))
+	F, x := big.NewFloat(float64(fee)), big.NewFloat(float64(received))
+
+	// The fee is expressed in bips
+	F = F.Quo(F, big.NewFloat(10000))
+
+	// right half: X+x-Fx
+	tempB := new(big.Float).Set(x)
+	tempB.Mul(tempB, F)
+	tempB = X.Add(X, x).Sub(X, tempB)
+
+	// left half: (1-F)Yx
+	tempA := big.NewFloat(1)
+	tempA = tempA.Sub(tempA, F).Mul(tempA, Y).Mul(tempA, x)
+
+	// avoid div-by-zero panic
+	if X.Cmp(big.NewFloat(0)) == 0 {
+		return xdr.Int64(0), false
+	}
+
+	quotient := tempA.Quo(tempA, tempB)
+	payout, accuracy := quotient.Int64() // floors
+	isOutOfRange := ((payout == math.MinInt64 && accuracy == big.Above) ||
+		(payout == math.MaxInt64 && accuracy == big.Below))
+
+	return xdr.Int64(payout), !isOutOfRange
 }
 
 // copyPoolState returns a duplicate of the given pool entry.
-//
-// This isn't idiomatic, but works in a pinch.
-// FIXME: What's a better way to make copies of XDR objects?
 func copyPoolState(pool xdr.LiquidityPoolEntry) (xdr.LiquidityPoolEntry, error) {
 	var newPool xdr.LiquidityPoolEntry
 	oldPoolState, err := pool.MarshalBinary()
@@ -577,29 +607,9 @@ func copyPoolState(pool xdr.LiquidityPoolEntry) (xdr.LiquidityPoolEntry, error) 
 	return newPool, nil
 }
 
-// calculateAmountDisbursed calculates the pool payout. From CAP-38:
-//
-//      y = floor[(1 - F) Yx / (X + x - Fx)]
-//
-// It returns false if the calculation overflows.
-func calculatePoolPayout(reserveA, reserveB, received xdr.Int64, fee xdr.Int32) (xdr.Int64, bool) {
-	X, Y := big.NewInt(int64(reserveA)), big.NewInt(int64(reserveB))
-	F, x := big.NewInt(int64(fee)), big.NewInt(int64(received))
-
-	// right half: X+x-Fx
-	tempB := new(big.Int)
-	tempB.Set(x).Mul(tempB, F)
-	X.Add(X, x).Sub(X, tempB)
-
-	// left half: (1-F)Yx
-	tempA := big.NewInt(1)
-	tempA.Sub(tempA, F).Mul(tempA, Y).Mul(tempA, x)
-
-	// avoid div-by-zero panic
-	if X.Cmp(big.NewInt(0)) == 0 {
-		return xdr.Int64(0), false
-	}
-
-	quotient := tempA.Div(tempA, X) // floors
-	return xdr.Int64(quotient.Int64()), quotient.IsInt64()
+// isAssetInLiquidityPool will tell you if `asset` is a reserve in `pool`,
+// silently failing for pools that aren't constant product.
+func isAssetInLiquidityPool(asset xdr.Asset, pool xdr.LiquidityPoolEntry) bool {
+	details, ok := pool.Body.GetConstantProduct()
+	return ok && (details.Params.AssetA.Equals(asset) || details.Params.AssetB.Equals(asset))
 }

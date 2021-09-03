@@ -10,6 +10,7 @@ import (
 	"github.com/stellar/go/keypair"
 	"github.com/stellar/go/price"
 	"github.com/stellar/go/xdr"
+	"github.com/stretchr/testify/assert"
 )
 
 var (
@@ -2022,4 +2023,47 @@ func TestFindPathsStartingAt(t *testing.T) {
 		},
 	}
 	assertPathEquals(t, paths, expectedPaths)
+}
+
+func TestLiquidityPoolExchanges(t *testing.T) {
+	poolId, err := xdr.NewPoolId(eurAsset, usdAsset, xdr.LiquidityPoolFeeV18)
+	assert.NoError(t, err)
+
+	pool := xdr.LiquidityPoolEntry{
+		LiquidityPoolId: poolId,
+		Body: xdr.LiquidityPoolEntryBody{
+			Type: xdr.LiquidityPoolTypeLiquidityPoolConstantProduct,
+			ConstantProduct: &xdr.LiquidityPoolEntryConstantProduct{
+				Params: xdr.LiquidityPoolConstantProductParameters{
+					AssetA: eurAsset,
+					AssetB: usdAsset,
+					Fee:    xdr.LiquidityPoolFeeV18,
+				},
+				ReserveA:                 xdr.Int64(100),
+				ReserveB:                 xdr.Int64(100),
+				TotalPoolShares:          xdr.Int64(2),
+				PoolSharesTrustLineCount: xdr.Int64(2),
+			},
+		},
+	}
+	details := pool.Body.MustConstantProduct()
+
+	payout, newPool, err := makeTrade(usdAsset, 50, pool)
+	if !assert.NoError(t, err) {
+		t.FailNow()
+	}
+
+	newDetails := newPool.Body.MustConstantProduct()
+
+	// Ensure that most of the new pool state hasn't changed
+	assert.True(t, newDetails.Params.AssetA.Equals(eurAsset))
+	assert.True(t, newDetails.Params.AssetB.Equals(usdAsset))
+	assert.Equal(t, details.PoolSharesTrustLineCount, newDetails.PoolSharesTrustLineCount)
+	assert.Equal(t, details.TotalPoolShares, newDetails.TotalPoolShares)
+	assert.Equal(t, details.Params.Fee, newDetails.Params.Fee)
+
+	// Aside from the reserves
+	assert.EqualValues(t, 33, payout)
+	assert.EqualValues(t, 67, newDetails.ReserveA)
+	assert.EqualValues(t, 150, newDetails.ReserveB)
 }
