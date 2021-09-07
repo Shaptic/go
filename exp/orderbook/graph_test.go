@@ -2046,24 +2046,9 @@ func TestLiquidityPoolExchanges(t *testing.T) {
 			},
 		},
 	}
-	details := pool.Body.MustConstantProduct()
 
-	payout, newPool, err := makeTrade(usdAsset, 50, pool)
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
-
-	newDetails := newPool.Body.MustConstantProduct()
-
-	// Ensure that most of the new pool state hasn't changed
-	assert.True(t, newDetails.Params.AssetA.Equals(eurAsset))
-	assert.True(t, newDetails.Params.AssetB.Equals(usdAsset))
-	assert.Equal(t, details.PoolSharesTrustLineCount, newDetails.PoolSharesTrustLineCount)
-	assert.Equal(t, details.TotalPoolShares, newDetails.TotalPoolShares)
-	assert.Equal(t, details.Params.Fee, newDetails.Params.Fee)
-
-	// Aside from the reserves
+	payout, err := makeTrade(usdAsset, 50, pool)
+	assert.NoError(t, err)
 	assert.EqualValues(t, 33, payout)
-	assert.EqualValues(t, 67, newDetails.ReserveA)
-	assert.EqualValues(t, 150, newDetails.ReserveB)
+	// reserves would now be: 67 of A, 150 of B
 }

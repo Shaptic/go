@@ -490,20 +490,14 @@ func sortAndFilterPaths(
 //
 // Refer to https://github.com/stellar/stellar-protocol/blob/master/core/cap-0038.md#pathpaymentstrictsendop-and-pathpaymentstrictreceiveop
 // for details on the exchange algorithm.
-func makeTrade(
-	asset xdr.Asset,
-	deposit uint32,
-	pool xdr.LiquidityPoolEntry,
-) (payout uint32, newPool xdr.LiquidityPoolEntry, err error) {
+func makeTrade(asset xdr.Asset, deposit uint32, pool xdr.LiquidityPoolEntry) (uint64, error) {
 	details, ok := pool.Body.GetConstantProduct()
 	if !ok {
-		err = errors.New("Liquidity pool unsupported: not constant product")
-		return
+		return 0, errors.New("Liquidity pool unsupported: not constant product")
 	}
 
 	if !isAssetInLiquidityPool(asset, pool) {
-		err = errors.New("Can't exchange asset against liquidity pool")
-		return
+		return 0, errors.New("Can't exchange asset against liquidity pool")
 	}
 
 	depositXdr := xdr.Int64(deposit)
@@ -520,36 +514,14 @@ func makeTrade(
 	payoutXdr, ok := calculatePoolPayout(X, Y, depositXdr, details.Params.Fee)
 
 	if !ok {
-		err = errors.New("Liquidity pool overflows from this exchange")
-		return
+		return 0, errors.New("Liquidity pool overflows from this exchange")
 	}
 
 	if payoutXdr > exchangeReserve {
-		err = errors.New("Not enough reserve for this exchange")
-		return
+		return 0, errors.New("Not enough reserve for this exchange")
 	}
 
-	newPool, err = copyPoolState(pool)
-	if err != nil {
-		err = errors.Wrap(err, "Failed to duplicate LP state")
-		return
-	}
-
-	payout = uint32(payoutXdr)
-	newDetails := newPool.Body.ConstantProduct
-
-	// Adjust reserves based on this exchange with the LP. Note that pool shares
-	// don't change because the exchange doesn't make you an actual participant
-	// in the pool.
-	if isAssetA {
-		newDetails.ReserveA += depositXdr
-		newDetails.ReserveB -= payoutXdr
-	} else {
-		newDetails.ReserveB += depositXdr
-		newDetails.ReserveA -= payoutXdr
-	}
-
-	return
+	return uint64(payoutXdr), nil
 }
 
 // calculateAmountDisbursed calculates the pool payout. From CAP-38:
@@ -578,28 +550,13 @@ func calculatePoolPayout(reserveA, reserveB, received xdr.Int64, fee xdr.Int32) 
 		return xdr.Int64(0), false
 	}
 
+	// take quotient of halves and check if it's outside of int64 range
 	quotient := tempA.Quo(tempA, tempB)
 	payout, accuracy := quotient.Int64() // floors
 	isOutOfRange := ((payout == math.MinInt64 && accuracy == big.Above) ||
 		(payout == math.MaxInt64 && accuracy == big.Below))
 
 	return xdr.Int64(payout), !isOutOfRange && payout >= 0
-}
-
-// copyPoolState returns a duplicate of the given pool entry.
-func copyPoolState(pool xdr.LiquidityPoolEntry) (xdr.LiquidityPoolEntry, error) {
-	var newPool xdr.LiquidityPoolEntry
-	oldPoolState, err := pool.MarshalBinary()
-	if err != nil {
-		return newPool, err
-	}
-
-	err = newPool.UnmarshalBinary(oldPoolState)
-	if err != nil {
-		return newPool, err
-	}
-
-	return newPool, nil
 }
 
 // isAssetInLiquidityPool will tell you if `asset` is a reserve in `pool`,
