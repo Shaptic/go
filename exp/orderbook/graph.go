@@ -522,11 +522,6 @@ func makeTrade(asset xdr.Asset, deposit int64, pool xdr.LiquidityPoolEntry) (uin
 		return 0, errors.New("Liquidity pool overflows from this exchange")
 	}
 
-	// should never happen, right?? by definition of an AMM
-	if payoutXdr > Y {
-		return 0, errors.New("Not enough reserve to pay out this exchange")
-	}
-
 	return uint64(payoutXdr), nil
 }
 
@@ -542,7 +537,7 @@ func calculatePoolPayout(reserveA, reserveB, received xdr.Int64, fee xdr.Int32) 
 
 	// would this deposit overflow the reserve?
 	if math.MaxInt64-received < reserveA {
-		return xdr.Int64(0), false
+		return 0, false
 	}
 
 	// The fee is expressed in bips
@@ -559,7 +554,7 @@ func calculatePoolPayout(reserveA, reserveB, received xdr.Int64, fee xdr.Int32) 
 
 	// avoid div-by-zero panic
 	if X.Cmp(big.NewFloat(0)) == 0 {
-		return xdr.Int64(0), false
+		return 0, false
 	}
 
 	// take quotient of halves and check if it's outside of int64 range
