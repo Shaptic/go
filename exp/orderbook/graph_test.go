@@ -2064,6 +2064,14 @@ func TestLiquidityPoolExchanges(t *testing.T) {
 }
 
 func BenchmarkLiquidityPoolExchanges(b *testing.B) {
-	depositAmount := int64(1 + rand.Intn(100))
+	depositAmount := int64(1 + rand.Int63n(math.MaxInt64-100))
 	makeTrade(usdAsset, depositAmount, eurUsdLiquidityPool)
+}
+
+func TestPathThroughLiquidityPools(t *testing.T) {
+	t.Skip()
+}
+
+func TestPathThroughOffersAndLiquidityPools(t *testing.T) {
+	t.Skip()
 }
