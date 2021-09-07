@@ -503,13 +503,11 @@ func makeTrade(asset xdr.Asset, deposit int64, pool xdr.LiquidityPoolEntry) (uin
 
 	depositXdr := xdr.Int64(deposit)
 	X, Y := details.ReserveA, details.ReserveB
-	exchangeReserve := details.ReserveB // amount of "other" asset in pool
 
 	// if necessary, swap the assets
 	poolAssetA, poolAssetB := details.Params.AssetA, details.Params.AssetB
 	if !poolAssetA.Equals(asset) {
 		X, Y = details.ReserveB, details.ReserveA
-		exchangeReserve = details.ReserveA
 	}
 
 	// sanity check: the asset should be one of the LP assets
@@ -525,8 +523,8 @@ func makeTrade(asset xdr.Asset, deposit int64, pool xdr.LiquidityPoolEntry) (uin
 	}
 
 	// should never happen, right?? by definition of an AMM
-	if payoutXdr > exchangeReserve {
-		return 0, errors.New("Not enough reserve for this exchange")
+	if payoutXdr > Y {
+		return 0, errors.New("Not enough reserve to pay out this exchange")
 	}
 
 	return uint64(payoutXdr), nil
