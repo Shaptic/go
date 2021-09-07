@@ -491,7 +491,11 @@ func sortAndFilterPaths(
 //
 // Refer to https://github.com/stellar/stellar-protocol/blob/master/core/cap-0038.md#pathpaymentstrictsendop-and-pathpaymentstrictreceiveop
 // and `calculatePoolPayout` (below) for details on the exchange algorithm.
-func makeTrade(asset xdr.Asset, deposit int64, pool xdr.LiquidityPoolEntry) (uint64, error) {
+
+func makeTrade(
+	asset xdr.Asset, deposit int64, pool xdr.LiquidityPoolEntry,
+	payoutFunc func(reserveA, reserveB, received xdr.Int64, fee xdr.Int32) (xdr.Int64, bool),
+) (uint64, error) {
 	details, ok := pool.Body.GetConstantProduct()
 	if !ok {
 		return 0, errors.New("Unsupported liquidity pool: must be ConstantProduct")
@@ -517,7 +521,7 @@ func makeTrade(asset xdr.Asset, deposit int64, pool xdr.LiquidityPoolEntry) (uin
 			poolAssetB.String())
 	}
 
-	payoutXdr, ok := calculatePoolPayout(X, Y, depositXdr, details.Params.Fee)
+	payoutXdr, ok := payoutFunc(X, Y, depositXdr, details.Params.Fee)
 	if !ok {
 		return 0, errors.New("Liquidity pool overflows from this exchange")
 	}
@@ -564,4 +568,38 @@ func calculatePoolPayout(reserveA, reserveB, received xdr.Int64, fee xdr.Int32) 
 		(payout == math.MaxInt64 && accuracy == big.Below))
 
 	return xdr.Int64(payout), !isOutOfRange && payout >= 0
+}
+
+// calculatePoolPayout calculates the amount disbursed from the pool for an
+// amount received. From CAP-38:
+//
+// y = floor[(1 - F) Yx / (X + x(1 - F))]
+//
+// It mimics this Stellar-Core code:
+//
+// https://github.com/stellar/stellar-core/commit/2e7afbe1fa8ea5ef5e07161c619314b3e989d18d#diff-7e45c16d4fa2b66abff32f32a925934f87235e1ecf66da27a94587e58e9d9c9dR1244-R1259
+//
+// It returns false if the calculation overflows.
+func calculatePoolPayout2(reserveA, reserveB, received xdr.Int64, feeBips xdr.Int32) (xdr.Int64, bool) {
+	// would this deposit overflow the pool reserves?
+	if received > math.MaxInt64-reserveA {
+		return 0, false
+	}
+
+	X, Y, x, F := uint64(reserveA), uint64(reserveB), uint64(received), uint64(feeBips)
+	maxBips := uint64(10000)
+
+	// right half, upscaled in bips: X + (1 - F)x
+	denom, ok := HugeAdd(BigMul(maxBips, X), BigMul(maxBips-F, x))
+	if !ok {
+		return 0, false
+	}
+
+	// left half: (1 - F) Yx, then divide
+	result, ok := MulThenDiv(uint32(maxBips-F), BigMul(Y, x), denom)
+	if !ok {
+		return 0, false
+	}
+
+	return xdr.Int64(result), result <= math.MaxInt64
 }
