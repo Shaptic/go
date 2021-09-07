@@ -2,6 +2,7 @@ package orderbook
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"math/big"
 	"sort"
@@ -485,19 +486,19 @@ func sortAndFilterPaths(
 //
 // It returns the amount that would be paid out by the pool for depositing
 // `amount` of `asset` alongside the new state of the liquidity pool after this
-// exchange, or an error. Errors can occur because of negative amounts, invalid
-// assets, invalid pools, XDR issues, etc.
+// exchange, or an error. Errors can occur because of invalid assets, pool
+// overflows, etc.
 //
 // Refer to https://github.com/stellar/stellar-protocol/blob/master/core/cap-0038.md#pathpaymentstrictsendop-and-pathpaymentstrictreceiveop
-// for details on the exchange algorithm.
-func makeTrade(asset xdr.Asset, deposit uint32, pool xdr.LiquidityPoolEntry) (uint64, error) {
+// and `calculatePoolPayout` (below) for details on the exchange algorithm.
+func makeTrade(asset xdr.Asset, deposit int64, pool xdr.LiquidityPoolEntry) (uint64, error) {
 	details, ok := pool.Body.GetConstantProduct()
 	if !ok {
-		return 0, errors.New("Liquidity pool unsupported: not constant product")
+		return 0, errors.New("Unsupported liquidity pool: must be ConstantProduct")
 	}
 
-	if !isAssetInLiquidityPool(asset, pool) {
-		return 0, errors.New("Can't exchange asset against liquidity pool")
+	if deposit <= 0 {
+		return 0, errors.New("Exchange amount must be positive")
 	}
 
 	depositXdr := xdr.Int64(deposit)
@@ -505,18 +506,25 @@ func makeTrade(asset xdr.Asset, deposit uint32, pool xdr.LiquidityPoolEntry) (ui
 	exchangeReserve := details.ReserveB // amount of "other" asset in pool
 
 	// if necessary, swap the assets
-	isAssetA := details.Params.AssetA.Equals(asset)
-	if !isAssetA {
+	poolAssetA, poolAssetB := details.Params.AssetA, details.Params.AssetB
+	if !poolAssetA.Equals(asset) {
 		X, Y = details.ReserveB, details.ReserveA
 		exchangeReserve = details.ReserveA
 	}
 
-	payoutXdr, ok := calculatePoolPayout(X, Y, depositXdr, details.Params.Fee)
+	// sanity check: the asset should be one of the LP assets
+	if !poolAssetB.Equals(asset) {
+		return 0, fmt.Errorf("%s incompatible with liquidity pool (%s <-> %s)",
+			asset.String(), poolAssetA.String(),
+			poolAssetB.String())
+	}
 
+	payoutXdr, ok := calculatePoolPayout(X, Y, depositXdr, details.Params.Fee)
 	if !ok {
 		return 0, errors.New("Liquidity pool overflows from this exchange")
 	}
 
+	// should never happen, right?? by definition of an AMM
 	if payoutXdr > exchangeReserve {
 		return 0, errors.New("Not enough reserve for this exchange")
 	}
@@ -524,7 +532,8 @@ func makeTrade(asset xdr.Asset, deposit uint32, pool xdr.LiquidityPoolEntry) (ui
 	return uint64(payoutXdr), nil
 }
 
-// calculateAmountDisbursed calculates the pool payout. From CAP-38:
+// calculatePoolPayout calculates the amount disbursed from the pool for an
+// amount received. From CAP-38:
 //
 //      y = floor[(1 - F) Yx / (X + x - Fx)]
 //
@@ -532,6 +541,11 @@ func makeTrade(asset xdr.Asset, deposit uint32, pool xdr.LiquidityPoolEntry) (ui
 func calculatePoolPayout(reserveA, reserveB, received xdr.Int64, fee xdr.Int32) (xdr.Int64, bool) {
 	X, Y := big.NewFloat(float64(reserveA)), big.NewFloat(float64(reserveB))
 	F, x := big.NewFloat(float64(fee)), big.NewFloat(float64(received))
+
+	// would this deposit overflow the reserve?
+	if math.MaxInt64-received < reserveA {
+		return xdr.Int64(0), false
+	}
 
 	// The fee is expressed in bips
 	F = F.Quo(F, big.NewFloat(10000))
@@ -557,11 +571,4 @@ func calculatePoolPayout(reserveA, reserveB, received xdr.Int64, fee xdr.Int32) 
 		(payout == math.MaxInt64 && accuracy == big.Below))
 
 	return xdr.Int64(payout), !isOutOfRange && payout >= 0
-}
-
-// isAssetInLiquidityPool will tell you if `asset` is a reserve in `pool`,
-// silently failing for pools that aren't constant product.
-func isAssetInLiquidityPool(asset xdr.Asset, pool xdr.LiquidityPoolEntry) bool {
-	details, ok := pool.Body.GetConstantProduct()
-	return ok && (details.Params.AssetA.Equals(asset) || details.Params.AssetB.Equals(asset))
 }

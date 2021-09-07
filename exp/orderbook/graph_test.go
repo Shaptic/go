@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding"
 	"math"
+	"math/rand"
 	"testing"
 
 	"github.com/stellar/go/keypair"
@@ -118,6 +119,25 @@ var (
 			D: 1,
 		},
 		Amount: xdr.Int64(500),
+	}
+
+	eurUsdLiquidityPoolId, _ = xdr.NewPoolId(eurAsset, usdAsset, xdr.LiquidityPoolFeeV18)
+	eurUsdLiquidityPool      = xdr.LiquidityPoolEntry{
+		LiquidityPoolId: eurUsdLiquidityPoolId,
+		Body: xdr.LiquidityPoolEntryBody{
+			Type: xdr.LiquidityPoolTypeLiquidityPoolConstantProduct,
+			ConstantProduct: &xdr.LiquidityPoolEntryConstantProduct{
+				Params: xdr.LiquidityPoolConstantProductParameters{
+					AssetA: eurAsset,
+					AssetB: usdAsset,
+					Fee:    xdr.LiquidityPoolFeeV18,
+				},
+				ReserveA:                 xdr.Int64(100),
+				ReserveB:                 xdr.Int64(100),
+				TotalPoolShares:          xdr.Int64(2),
+				PoolSharesTrustLineCount: xdr.Int64(2),
+			},
+		},
 	}
 )
 
@@ -2026,29 +2046,24 @@ func TestFindPathsStartingAt(t *testing.T) {
 }
 
 func TestLiquidityPoolExchanges(t *testing.T) {
-	poolId, err := xdr.NewPoolId(eurAsset, usdAsset, xdr.LiquidityPoolFeeV18)
-	assert.NoError(t, err)
-
-	pool := xdr.LiquidityPoolEntry{
-		LiquidityPoolId: poolId,
-		Body: xdr.LiquidityPoolEntryBody{
-			Type: xdr.LiquidityPoolTypeLiquidityPoolConstantProduct,
-			ConstantProduct: &xdr.LiquidityPoolEntryConstantProduct{
-				Params: xdr.LiquidityPoolConstantProductParameters{
-					AssetA: eurAsset,
-					AssetB: usdAsset,
-					Fee:    xdr.LiquidityPoolFeeV18,
-				},
-				ReserveA:                 xdr.Int64(100),
-				ReserveB:                 xdr.Int64(100),
-				TotalPoolShares:          xdr.Int64(2),
-				PoolSharesTrustLineCount: xdr.Int64(2),
-			},
-		},
-	}
-
-	payout, err := makeTrade(usdAsset, 50, pool)
+	payout, err := makeTrade(usdAsset, 50, eurUsdLiquidityPool)
 	assert.NoError(t, err)
 	assert.EqualValues(t, 33, payout)
 	// reserves would now be: 67 of A, 150 of B
+
+	// should error on too big or small of a deposit
+	badValues := []int64{math.MaxInt64, math.MaxInt64 - 99, 0, -100}
+	for _, badValue := range badValues {
+		_, err = makeTrade(usdAsset, badValue, eurUsdLiquidityPool)
+		assert.Error(t, err)
+	}
+
+	// should error on bad asset
+	_, err = makeTrade(yenAsset, 100, eurUsdLiquidityPool)
+	assert.Error(t, err)
+}
+
+func BenchmarkLiquidityPoolExchanges(b *testing.B) {
+	depositAmount := int64(1 + rand.Intn(100))
+	makeTrade(usdAsset, depositAmount, eurUsdLiquidityPool)
 }
