@@ -2046,7 +2046,7 @@ func TestFindPathsStartingAt(t *testing.T) {
 }
 
 func TestLiquidityPoolExchanges(t *testing.T) {
-	payout, err := makeTrade(usdAsset, 50, eurUsdLiquidityPool, calculatePoolPayout)
+	payout, err := makeTrade(usdAsset, 50, eurUsdLiquidityPool)
 	assert.NoError(t, err)
 	assert.EqualValues(t, 33, payout)
 	// reserves would now be: 67 of A, 150 of B
@@ -2054,17 +2054,17 @@ func TestLiquidityPoolExchanges(t *testing.T) {
 	// should error on too big or small of a deposit
 	badValues := []int64{math.MaxInt64, math.MaxInt64 - 99, 0, -100}
 	for _, badValue := range badValues {
-		_, err = makeTrade(usdAsset, badValue, eurUsdLiquidityPool, calculatePoolPayout)
+		_, err = makeTrade(usdAsset, badValue, eurUsdLiquidityPool)
 		assert.Error(t, err)
 	}
 
 	// should error on bad asset
-	_, err = makeTrade(yenAsset, 100, eurUsdLiquidityPool, calculatePoolPayout)
+	_, err = makeTrade(yenAsset, 100, eurUsdLiquidityPool)
 	assert.Error(t, err)
 }
 
 func BenchmarkSingleLiquidityPoolExchanges(b *testing.B) {
-	makeTrade(usdAsset, math.MaxInt64/2, eurUsdLiquidityPool, calculatePoolPayout)
+	makeTrade(usdAsset, math.MaxInt64/2, eurUsdLiquidityPool)
 }
 
 func BenchmarkLiquidityPoolExchanges(b *testing.B) {
@@ -2076,20 +2076,7 @@ func BenchmarkLiquidityPoolExchanges(b *testing.B) {
 	}
 
 	for _, amount := range depositAmounts {
-		makeTrade(usdAsset, amount, eurUsdLiquidityPool, calculatePoolPayout)
-	}
-}
-
-func BenchmarkAlternativeLiquidityPoolExchanges(b *testing.B) {
-	// Generate a pool of randomness *first*, which should be make it easier to
-	// isolate the performance of the trades themselves.
-	depositAmounts := make([]int64, b.N)
-	for i, _ := range depositAmounts {
-		depositAmounts[i] = int64(1 + rand.Int63n(math.MaxInt64-100))
-	}
-
-	for _, amount := range depositAmounts {
-		makeTrade(usdAsset, amount, eurUsdLiquidityPool, calculatePoolPayout2)
+		makeTrade(usdAsset, amount, eurUsdLiquidityPool)
 	}
 }
 
