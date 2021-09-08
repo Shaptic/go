@@ -491,10 +491,7 @@ func sortAndFilterPaths(
 //
 // Refer to https://github.com/stellar/stellar-protocol/blob/master/core/cap-0038.md#pathpaymentstrictsendop-and-pathpaymentstrictreceiveop
 // and `calculatePoolPayout` (below) for details on the exchange algorithm.
-
-func makeTrade(
-	asset xdr.Asset, deposit int64, pool xdr.LiquidityPoolEntry,
-) (uint64, error) {
+func makeTrade(asset xdr.Asset, deposit int64, pool xdr.LiquidityPoolEntry) (uint64, error) {
 	details, ok := pool.Body.GetConstantProduct()
 	if !ok {
 		return 0, errors.New("Unsupported liquidity pool: must be ConstantProduct")
@@ -511,13 +508,13 @@ func makeTrade(
 	poolAssetA, poolAssetB := details.Params.AssetA, details.Params.AssetB
 	if !poolAssetA.Equals(asset) {
 		X, Y = details.ReserveB, details.ReserveA
-	}
 
-	// sanity check: the asset should be one of the LP assets
-	if !poolAssetB.Equals(asset) {
-		return 0, fmt.Errorf("%s incompatible with liquidity pool (%s <-> %s)",
-			asset.String(), poolAssetA.String(),
-			poolAssetB.String())
+		// sanity check: the asset should be one of the LP assets
+		if !poolAssetB.Equals(asset) {
+			return 0, fmt.Errorf("%s incompatible with liquidity pool (%s <-> %s)",
+				asset.String(), poolAssetA.String(),
+				poolAssetB.String())
+		}
 	}
 
 	payoutXdr, ok := calculatePoolPayout(X, Y, depositXdr, details.Params.Fee)
