@@ -178,5 +178,40 @@ func TestGetAccountDataByName(t *testing.T) {
 	assert.NoError(t, err)
 	tt.Assert.Equal(data2.Name, record.Name)
 	tt.Assert.Equal(data2.Value, record.Value)
+}
 
+func TestAccountDataSortedByKey(t *testing.T) {
+	tt := test.Start(t)
+	defer tt.Finish()
+	test.ResetHorizonDB(t, tt.HorizonDB)
+	q := &Q{tt.HorizonSession()}
+
+	var err error
+
+	firstData := Data{
+		Name:               "alphabetically first",
+		Value:              []byte("value"),
+		AccountID:          "GAOQJGUAB7NI7K7I62ORBXMN3J4SSWQUQ7FOEPSDJ322W2HMCNWPHXFB",
+		LastModifiedLedger: 1234,
+	}
+	secondData := Data{
+		Name:               "ze last name",
+		Value:              []byte("value"),
+		AccountID:          "GAOQJGUAB7NI7K7I62ORBXMN3J4SSWQUQ7FOEPSDJ322W2HMCNWPHXFB",
+		LastModifiedLedger: 1234,
+	}
+
+	// note ordering here: the alphabetically-first data entry comes second
+	err = q.UpsertAccountData(tt.Ctx, []Data{secondData, firstData})
+	assert.NoError(t, err)
+
+	datas, err := q.GetAccountDataByAccountID(tt.Ctx, firstData.AccountID)
+	assert.NoError(t, err)
+	if !assert.Len(t, datas, 2) {
+		t.FailNow()
+	}
+
+	// this fails; why? where is the re-ordering happening..?
+	assert.Equal(t, secondData.Name, datas[0].Name)
+	assert.Equal(t, firstData.Name, datas[1].Name)
 }
