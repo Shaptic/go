@@ -79,8 +79,8 @@ func generateLiquidityPoolOps(itest *integration.Test, tt *assert.Assertions) (l
 			LiquidityPoolID: [32]byte(poolID),
 			MaxAmountA:      "400",
 			MaxAmountB:      "777",
-			MinPrice:        "0.5",
-			MaxPrice:        "2",
+			MinPrice:        xdr.Price{1, 2},
+			MaxPrice:        xdr.Price{2, 1},
 		},
 	)
 
@@ -136,8 +136,7 @@ func generatePaymentOps(itest *integration.Test, tt *assert.Assertions) (lastLed
 }
 
 func initializeDBIntegrationTest(t *testing.T) (itest *integration.Test, reachedLedger int32) {
-	config := integration.Config{ProtocolVersion: 18}
-	itest = integration.NewTest(t, config)
+	itest = integration.NewTest(t, integration.Config{})
 	tt := assert.New(t)
 
 	generatePaymentOps(itest, tt)
@@ -368,10 +367,6 @@ func TestResumeFromInitializedDB(t *testing.T) {
 	tt := assert.New(t)
 
 	// Stop the integration test, and restart it with the same database
-	oldDBURL := itest.GetHorizonConfig().DatabaseURL
-	itestConfig := protocol15Config
-	itestConfig.PostgresURL = oldDBURL
-
 	err := itest.RestartHorizon()
 	tt.NoError(err)
 
