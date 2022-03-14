@@ -187,9 +187,11 @@ func TestTransactionEnvelopeGoStringerV1(t *testing.T) {
 				SourceAccount: xdr.MustMuxedAddress("GC7ERFCD7QLDFRSEPLYB3GYSWX6GYMCHLDL45N4S5Q2N5EJDOMOJ63V4"),
 				Fee:           100,
 				SeqNum:        99284448289310326,
-				TimeBounds: &xdr.TimeBounds{
-					MinTime: xdr.TimePoint(0),
-					MaxTime: xdr.TimePoint(0),
+				Cond: xdr.Preconditions{
+					TimeBounds: &xdr.TimeBounds{
+						MinTime: xdr.TimePoint(0),
+						MaxTime: xdr.TimePoint(0),
+					},
 				},
 				Memo: xdr.Memo{Type: xdr.MemoTypeMemoNone},
 				Operations: []xdr.Operation{
@@ -237,9 +239,11 @@ func TestTransactionEnvelopeGoStringerFeeBump(t *testing.T) {
 							SourceAccount: xdr.MustMuxedAddress("GD6WNNTW664WH7FXC5RUMUTF7P5QSURC2IT36VOQEEGFZ4UWUEQGECAL"),
 							Fee:           0,
 							SeqNum:        566862668627969,
-							TimeBounds: &xdr.TimeBounds{
-								MinTime: xdr.TimePoint(0),
-								MaxTime: xdr.TimePoint(0),
+							Cond: xdr.Preconditions{
+								TimeBounds: &xdr.TimeBounds{
+									MinTime: xdr.TimePoint(0),
+									MaxTime: xdr.TimePoint(0),
+								},
 							},
 							Memo: xdr.MemoText("My 1st fee bump! Woohoo!"),
 							Operations: []xdr.Operation{

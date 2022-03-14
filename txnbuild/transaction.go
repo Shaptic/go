@@ -867,9 +867,11 @@ func NewTransaction(params TransactionParams) (*Transaction, error) {
 				SourceAccount: sourceAccount,
 				Fee:           xdr.Uint32(tx.maxFee),
 				SeqNum:        xdr.SequenceNumber(sequence),
-				TimeBounds: &xdr.TimeBounds{
-					MinTime: xdr.TimePoint(tx.timebounds.MinTime),
-					MaxTime: xdr.TimePoint(tx.timebounds.MaxTime),
+				Cond: xdr.Preconditions{
+					TimeBounds: &xdr.TimeBounds{
+						MinTime: xdr.TimePoint(tx.timebounds.MinTime),
+						MaxTime: xdr.TimePoint(tx.timebounds.MaxTime),
+					},
 				},
 			},
 			Signatures: nil,

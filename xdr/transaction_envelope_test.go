@@ -58,9 +58,11 @@ func createTx() TransactionEnvelope {
 					Hash: &Hash{1, 1, 1},
 				},
 				SeqNum: 97,
-				TimeBounds: &TimeBounds{
-					MinTime: 2,
-					MaxTime: 4,
+				Cond: Preconditions{
+					TimeBounds: &TimeBounds{
+						MinTime: 2,
+						MaxTime: 4,
+					},
 				},
 				Operations: []Operation{
 					{
@@ -280,13 +282,13 @@ func TestTimeBounds(t *testing.T) {
 
 	assert.Equal(
 		t,
-		tx.V1.Tx.TimeBounds,
+		tx.V1.Tx.Cond.TimeBounds,
 		tx.TimeBounds(),
 	)
 
 	assert.Equal(
 		t,
-		feeBumpTx.FeeBump.Tx.InnerTx.V1.Tx.TimeBounds,
+		feeBumpTx.FeeBump.Tx.InnerTx.V1.Tx.Cond.TimeBounds,
 		feeBumpTx.TimeBounds(),
 	)
 }

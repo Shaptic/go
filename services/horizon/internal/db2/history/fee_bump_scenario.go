@@ -141,9 +141,11 @@ func FeeBumpScenario(tt *test.T, q *Q, successful bool) FeeBumpFixture {
 								Type: xdr.MemoTypeMemoNone,
 							},
 							SeqNum: 97,
-							TimeBounds: &xdr.TimeBounds{
-								MinTime: 2,
-								MaxTime: 4,
+							Cond: xdr.Preconditions{
+								TimeBounds: &xdr.TimeBounds{
+									MinTime: 2,
+									MaxTime: 4,
+								},
 							},
 							Operations: []xdr.Operation{
 								{
