@@ -59,6 +59,7 @@ func createTx() TransactionEnvelope {
 				},
 				SeqNum: 97,
 				Cond: Preconditions{
+					Type: PreconditionTypePrecondTime,
 					TimeBounds: &TimeBounds{
 						MinTime: 2,
 						MaxTime: 4,

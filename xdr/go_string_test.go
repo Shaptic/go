@@ -188,6 +188,7 @@ func TestTransactionEnvelopeGoStringerV1(t *testing.T) {
 				Fee:           100,
 				SeqNum:        99284448289310326,
 				Cond: xdr.Preconditions{
+					Type: xdr.PreconditionTypePrecondTime,
 					TimeBounds: &xdr.TimeBounds{
 						MinTime: xdr.TimePoint(0),
 						MaxTime: xdr.TimePoint(0),
@@ -240,6 +241,7 @@ func TestTransactionEnvelopeGoStringerFeeBump(t *testing.T) {
 							Fee:           0,
 							SeqNum:        566862668627969,
 							Cond: xdr.Preconditions{
+								Type: xdr.PreconditionTypePrecondTime,
 								TimeBounds: &xdr.TimeBounds{
 									MinTime: xdr.TimePoint(0),
 									MaxTime: xdr.TimePoint(0),
