@@ -39,11 +39,9 @@ func TestHashTransaction(t *testing.T) {
 		Memo:          txe.Memo(),
 		Operations:    txe.Operations(),
 		SeqNum:        xdr.SequenceNumber(txe.SeqNum()),
-		Cond: xdr.Preconditions{
-			Type:       xdr.PreconditionTypePrecondTime,
-			TimeBounds: txe.TimeBounds(),
-		},
+		Cond:          xdr.UpgradePrecondition(txe.TimeBounds()),
 	}
+
 	actual, err = HashTransaction(tx, TestNetworkPassphrase)
 	assert.NoError(t, err)
 	assert.Equal(t, expected, actual)

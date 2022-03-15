@@ -79,16 +79,14 @@ func HashTransactionV0(tx xdr.TransactionV0, passphrase string) ([32]byte, error
 	if err != nil {
 		return [32]byte{}, err
 	}
+
 	v1Tx := xdr.Transaction{
 		SourceAccount: sa,
 		Fee:           tx.Fee,
 		Memo:          tx.Memo,
 		Operations:    tx.Operations,
 		SeqNum:        tx.SeqNum,
-		Cond: xdr.Preconditions{
-			Type:       xdr.PreconditionTypePrecondTime,
-			TimeBounds: tx.TimeBounds,
-		},
+		Cond:          xdr.UpgradePrecondition(tx.TimeBounds),
 	}
 	return HashTransaction(v1Tx, passphrase)
 }
