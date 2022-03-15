@@ -1,6 +1,7 @@
 package xdr
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/stellar/go/strkey"
@@ -17,8 +18,8 @@ func (skey *SignerKey) Address() string {
 	return address
 }
 
-// GetAddress returns the strkey encoded form of this signer key, and an error if the
-// SignerKey is of an unknown type.
+// GetAddress returns the strkey encoded form of this signer key, and an error
+// if the SignerKey is of an unknown type.
 func (skey *SignerKey) GetAddress() (string, error) {
 	if skey == nil {
 		return "", nil
@@ -40,6 +41,13 @@ func (skey *SignerKey) GetAddress() (string, error) {
 		vb = strkey.VersionByteHashTx
 		key := skey.MustPreAuthTx()
 		copy(raw, key[:])
+	case SignerKeyTypeSignerKeyTypeEd25519SignedPayload:
+		sp := skey.MustEd25519SignedPayload()
+		publicKey, err := strkey.Encode(strkey.VersionByteAccountID, sp.Ed25519[:])
+		if err != nil {
+			return "", errors.Wrap(err, "failed to decode payload signer")
+		}
+		return strkey.MakeSignedPayload(publicKey, sp.Payload).Encode()
 	default:
 		return "", fmt.Errorf("unknown signer key type: %v", skey.Type)
 	}
@@ -66,6 +74,10 @@ func (skey *SignerKey) Equals(other SignerKey) bool {
 		l := skey.MustPreAuthTx()
 		r := other.MustPreAuthTx()
 		return l == r
+	case SignerKeyTypeSignerKeyTypeEd25519SignedPayload:
+		l := skey.MustEd25519SignedPayload()
+		r := other.MustEd25519SignedPayload()
+		return l.Ed25519 == r.Ed25519 && bytes.Equal(l.Payload, r.Payload)
 	default:
 		panic(fmt.Errorf("Unknown signer key type: %v", skey.Type))
 	}
@@ -101,8 +113,30 @@ func (skey *SignerKey) SetAddress(address string) error {
 		keytype = SignerKeyTypeSignerKeyTypeHashX
 	case strkey.VersionByteHashTx:
 		keytype = SignerKeyTypeSignerKeyTypePreAuthTx
+	case strkey.VersionByteSignedPayload:
+		keytype = SignerKeyTypeSignerKeyTypeEd25519SignedPayload
 	default:
 		return errors.Errorf("invalid version byte: %v", vb)
+	}
+
+	if vb == strkey.VersionByteSignedPayload {
+		sp, innerErr := strkey.DecodeSignedPayload(address)
+		if innerErr != nil {
+			return innerErr
+		}
+
+		pubkey, innerErr := strkey.Decode(strkey.VersionByteAccountID, sp.Signer)
+		if innerErr != nil {
+			return innerErr
+		}
+
+		var signer Uint256
+		copy(signer[:], pubkey)
+		*skey, innerErr = NewSignerKey(keytype, SignerKeyEd25519SignedPayload{
+			Ed25519: signer,
+			Payload: sp.Payload, // do we need a buffer copy here?
+		})
+		return innerErr
 	}
 
 	raw, err := strkey.Decode(vb, address)
@@ -114,10 +148,8 @@ func (skey *SignerKey) SetAddress(address string) error {
 		return errors.New("invalid address")
 	}
 
-	var ui Uint256
-	copy(ui[:], raw)
-
-	*skey, err = NewSignerKey(keytype, ui)
-
+	var signer Uint256
+	copy(signer[:], raw)
+	*skey, err = NewSignerKey(keytype, signer)
 	return err
 }
