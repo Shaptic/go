@@ -14,14 +14,14 @@ type SignedPayload struct {
 	Payload []byte
 }
 
-func MakeSignedPayload(signerPublicKey string, payload []byte) *SignedPayload {
+func MakeSignedPayload(signerPublicKey string, payload []byte) (*SignedPayload, error) {
 	if len(payload) > 64 {
-		panic(fmt.Errorf("expected <= 64-byte payload, got %d", len(payload)))
+		return nil, errors.Errorf("expected <= 64-byte payload, got %d", len(payload))
 	}
 
 	src := make([]byte, len(payload))
 	copy(src, payload)
-	return &SignedPayload{Signer: signerPublicKey, Payload: src}
+	return &SignedPayload{Signer: signerPublicKey, Payload: src}, nil
 }
 
 // Encode turns a signed payload structure into its StrKey equivalent.
@@ -87,7 +87,7 @@ func DecodeSignedPayload(address string) (*SignedPayload, error) {
 		return nil, fmt.Errorf("signed payload has invalid padding")
 	}
 
-	return MakeSignedPayload(signer, raw[36:36+payloadLen]), nil
+	return MakeSignedPayload(signer, raw[36:36+payloadLen])
 }
 
 func getNextMultiple(x, n int) int {

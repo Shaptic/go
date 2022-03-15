@@ -1,14 +1,13 @@
 package strkey
 
 import (
+	"bytes"
+	"crypto/rand"
 	"encoding/hex"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
-
-func TestSignedPayload_Sizes(t *testing.T) {
-}
 
 func TestSignedPayloads(t *testing.T) {
 	testCases := []struct {
@@ -34,14 +33,20 @@ func TestSignedPayloads(t *testing.T) {
 
 	for _, testCase := range testCases {
 		payload, _ := hex.DecodeString(testCase.hexPayload)
-		sp := MakeSignedPayload(testCase.signer, payload)
+		sp, err := MakeSignedPayload(testCase.signer, payload)
+		if !assert.NoError(t, err) || !assert.NotNil(t, sp) {
+			t.Fail()
+			continue
+		}
+
 		actual, err := sp.Encode()
 		assert.NoError(t, err)
 		assert.Equal(t, testCase.expected, actual)
 
 		sp, err = DecodeSignedPayload(testCase.expected)
 		if !assert.NoError(t, err) || !assert.NotNil(t, sp) {
-			t.FailNow()
+			t.Fail()
+			continue
 		}
 		assert.Equal(t, testCase.signer, sp.Signer)
 		assert.Equal(t, testCase.hexPayload, hex.EncodeToString(sp.Payload))
@@ -62,5 +67,37 @@ func TestSignedPayloadErrors(t *testing.T) {
 		sp, err := DecodeSignedPayload(testCase)
 		assert.Error(t, err)
 		assert.Nil(t, sp)
+	}
+}
+
+// TestSignedPayloadSizes ensures all valid payload lengths work
+func TestSignedPayloadSizes(t *testing.T) {
+	signer := "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ"
+
+	for length := 0; length <= 64; length++ {
+		payload := make([]byte, length)
+		_, err := rand.Read(payload)
+		assert.NoError(t, err)
+
+		sp, err := MakeSignedPayload(signer, payload)
+		if !assert.NotNil(t, sp) || !assert.NoError(t, err) {
+			t.Fail()
+			continue
+		}
+		assert.Equal(t, signer, sp.Signer)
+		assert.True(t, bytes.Equal(payload, sp.Payload))
+
+		_, err = sp.Encode()
+		assert.NoError(t, err)
+	}
+
+	for _, length := range []int{65} {
+		payload := make([]byte, length)
+		_, err := rand.Read(payload)
+		assert.NoError(t, err)
+
+		sp, err := MakeSignedPayload(signer, payload)
+		assert.Nil(t, sp)
+		assert.Error(t, err)
 	}
 }

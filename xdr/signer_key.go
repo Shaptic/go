@@ -47,7 +47,12 @@ func (skey *SignerKey) GetAddress() (string, error) {
 		if err != nil {
 			return "", errors.Wrap(err, "failed to decode payload signer")
 		}
-		return strkey.MakeSignedPayload(publicKey, sp.Payload).Encode()
+		spWrapper, err := strkey.MakeSignedPayload(publicKey, sp.Payload)
+		if err != nil {
+			return "", errors.Wrap(err, "failed to create signed payload")
+		}
+		return spWrapper.Encode()
+
 	default:
 		return "", fmt.Errorf("unknown signer key type: %v", skey.Type)
 	}
