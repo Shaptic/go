@@ -41,12 +41,12 @@ const (
 )
 
 // maxPayloadSize is the maximum length of the payload for all versions. The
-// largest strkey is a signed payload: 64-byte payload + 32-byte public key
-const maxPayloadSize = 96
+// largest strkey is a signed payload: 32-byte public key + 4-byte payload
+// length + 64-byte payload
+const maxPayloadSize = 100
 
 // maxRawSize is the maximum length of a strkey in its raw form not encoded.
 const maxRawSize = 1 + /* version byte */
-	4 + /* signed payload length */
 	maxPayloadSize +
 	2 /* checksum */
 
