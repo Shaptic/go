@@ -229,3 +229,15 @@ func (t *TimeBounds) GoString() string {
 	}
 	return fmt.Sprintf("&xdr.TimeBounds{MinTime: xdr.TimePoint(%d), MaxTime: xdr.TimePoint(%d)}", t.MinTime, t.MaxTime)
 }
+
+func (c Preconditions) GoString() string {
+	switch c.Type {
+	case PreconditionTypePrecondNone:
+		return "nil"
+	case PreconditionTypePrecondTime:
+		return fmt.Sprintf("{TimeBounds:%s}", c.TimeBounds.GoString())
+	case PreconditionTypePrecondV2:
+		return fmt.Sprintf("{V2:%#v}", c.V2)
+	}
+	return "(bad type)"
+}
