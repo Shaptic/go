@@ -12,3 +12,18 @@ func UpgradePrecondition(timebounds *TimeBounds) Preconditions {
 	}
 	return cond
 }
+
+func GetTimebounds(tx *Transaction) *TimeBounds {
+	if tx == nil {
+		return nil
+	}
+	switch tx.Cond.Type {
+	case PreconditionTypePrecondNone:
+		return nil
+	case PreconditionTypePrecondTime:
+		return tx.Cond.TimeBounds
+	case PreconditionTypePrecondV2:
+		return tx.Cond.V2.TimeBounds
+	}
+	return nil
+}

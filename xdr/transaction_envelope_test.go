@@ -283,8 +283,20 @@ func TestTimeBounds(t *testing.T) {
 
 	assert.Equal(
 		t,
+		tx.V1.Tx.Cond.Type,
+		PreconditionTypePrecondTime,
+	)
+
+	assert.Equal(
+		t,
 		tx.V1.Tx.Cond.TimeBounds,
 		tx.TimeBounds(),
+	)
+
+	assert.Equal(
+		t,
+		feeBumpTx.FeeBump.Tx.InnerTx.V1.Tx.Cond.Type,
+		PreconditionTypePrecondTime,
 	)
 
 	assert.Equal(
