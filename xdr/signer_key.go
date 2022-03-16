@@ -139,7 +139,7 @@ func (skey *SignerKey) SetAddress(address string) error {
 		copy(signer[:], pubkey)
 		*skey, innerErr = NewSignerKey(keytype, SignerKeyEd25519SignedPayload{
 			Ed25519: signer,
-			Payload: sp.Payload, // do we need a buffer copy here?
+			Payload: sp.Payload,
 		})
 		return innerErr
 	}

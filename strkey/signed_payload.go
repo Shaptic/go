@@ -16,7 +16,7 @@ type SignedPayload struct {
 
 func MakeSignedPayload(signerPublicKey string, payload []byte) (*SignedPayload, error) {
 	if len(payload) > 64 {
-		return nil, errors.Errorf("expected <= 64-byte payload, got %d", len(payload))
+		return nil, errors.Errorf("payload length %d exceeds max 64", len(payload))
 	}
 
 	src := make([]byte, len(payload))
@@ -31,6 +31,7 @@ func (sp *SignedPayload) Encode() (string, error) {
 		return "", errors.Wrap(err, "failed to encode signed payload")
 	}
 
+	pad := [4]byte{0, 0, 0, 0}
 	// Encoding has four parts:
 	//  - 32-byte signer public key
 	//  - 4-byte payload length
@@ -43,9 +44,7 @@ func (sp *SignedPayload) Encode() (string, error) {
 	copy(src[:32], signerBytes)                                     // signer
 	binary.BigEndian.PutUint32(src[32:36], uint32(len(sp.Payload))) // length
 	copy(src[36:], sp.Payload)                                      // payload
-	for i := 0; i < padding; i++ {                                  // padding
-		src[36+len(sp.Payload)+i] = byte(0)
-	}
+	copy(src[36+len(sp.Payload):], pad[:padding])                   // padding
 
 	strkey, err := Encode(VersionByteSignedPayload, src[:])
 	if err != nil {

@@ -103,7 +103,7 @@ func TestEncode(t *testing.T) {
 	assert.Error(t, err)
 
 	// test too long payload
-	longPayload := make([]byte, 101)
+	longPayload := make([]byte, maxPayloadSize+1)
 	rand.Read(longPayload)
 	_, err = Encode(VersionByteAccountID, longPayload)
 	assert.EqualError(t, err, "data exceeds maximum payload size for strkey")
