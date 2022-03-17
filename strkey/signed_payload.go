@@ -2,7 +2,6 @@ package strkey
 
 import (
 	"bytes"
-	"math"
 
 	xdr "github.com/stellar/go-xdr/xdr3"
 	"github.com/stellar/go/support/errors"
@@ -69,8 +68,4 @@ func DecodeSignedPayload(address string) (*SignedPayload, error) {
 	}
 
 	return MakeSignedPayload(signer, payload)
-}
-
-func getNextMultiple(x, n int) int {
-	return int(math.Ceil(float64(x)/float64(n)) * float64(n))
 }
