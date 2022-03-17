@@ -2,10 +2,9 @@ package strkey
 
 import (
 	"bytes"
-	"encoding/binary"
-	"fmt"
 	"math"
 
+	xdr "github.com/stellar/go-xdr/xdr3"
 	"github.com/stellar/go/support/errors"
 )
 
@@ -14,9 +13,12 @@ type SignedPayload struct {
 	Payload []byte
 }
 
+const maxPayloadLen = 64
+
 func MakeSignedPayload(signerPublicKey string, payload []byte) (*SignedPayload, error) {
-	if len(payload) > 64 {
-		return nil, errors.Errorf("payload length %d exceeds max 64", len(payload))
+	if len(payload) > maxPayloadLen {
+		return nil, errors.Errorf("payload length %d exceeds max %d",
+			len(payload), maxPayloadLen)
 	}
 
 	src := make([]byte, len(payload))
@@ -28,27 +30,16 @@ func MakeSignedPayload(signerPublicKey string, payload []byte) (*SignedPayload, 
 func (sp *SignedPayload) Encode() (string, error) {
 	signerBytes, err := Decode(VersionByteAccountID, sp.Signer)
 	if err != nil {
-		return "", errors.Wrap(err, "failed to encode signed payload")
+		return "", errors.Wrap(err, "failed to decode signed payload signer")
 	}
 
-	pad := [4]byte{0, 0, 0, 0}
-	// Encoding has four parts:
-	//  - 32-byte signer public key
-	//  - 4-byte payload length
-	//  - N-byte payload (where N <= 64)
-	//  - M-byte padding (where 0 <= M <= 4)
-	baseLength := 32 + 4 + len(sp.Payload)
-	padding := getNextMultiple(baseLength, 4) - baseLength
-	src := make([]byte, baseLength+padding)
+	b := new(bytes.Buffer)
+	b.Write(signerBytes)
+	xdr.Marshal(b, sp.Payload)
 
-	copy(src[:32], signerBytes)                                     // signer
-	binary.BigEndian.PutUint32(src[32:36], uint32(len(sp.Payload))) // length
-	copy(src[36:], sp.Payload)                                      // payload
-	copy(src[36+len(sp.Payload):], pad[:padding])                   // padding
-
-	strkey, err := Encode(VersionByteSignedPayload, src[:])
+	strkey, err := Encode(VersionByteSignedPayload, b.Bytes())
 	if err != nil {
-		return "", err
+		return "", errors.Wrap(err, "failed to encode signed payload")
 	}
 	return strkey, nil
 }
@@ -58,35 +49,26 @@ func DecodeSignedPayload(address string) (*SignedPayload, error) {
 	if err != nil {
 		return nil, errors.New("invalid signed payload")
 	}
-	if len(raw) > 32+4+64 {
-		return nil, errors.Errorf("signed payload too large: %d", len(raw))
-	}
-	if len(raw)%4 != 0 {
-		return nil, errors.Errorf("signed payload has invalid padding")
-	}
 
-	signer, err := Encode(VersionByteAccountID, raw[:32])
+	const signerLen = 32
+	rawSigner, raw := raw[:signerLen], raw[signerLen:]
+	signer, err := Encode(VersionByteAccountID, rawSigner)
 	if err != nil {
-		return nil, errors.Wrap(err, "signed payload has invalid signer")
+		return nil, errors.Wrap(err, "invalid signed payload signer")
 	}
 
-	var payloadLen uint32 = 0
-	reader := bytes.NewBuffer(raw[32:])
-	err = binary.Read(reader, binary.BigEndian, &payloadLen)
+	payload := []byte{}
+	reader := bytes.NewBuffer(raw)
+	readBytes, err := xdr.Unmarshal(reader, &payload)
 	if err != nil {
-		return nil, errors.Wrap(err,
-			fmt.Sprintf("signed payload has invalid length"))
+		return nil, errors.Wrap(err, "invalid signed payload")
 	}
 
-	if payloadLen > 64 {
-		return nil, fmt.Errorf("signed payload has invalid length: %d", payloadLen)
+	if len(raw) != readBytes || reader.Len() > 0 {
+		return nil, errors.New("invalid signed payload padding")
 	}
 
-	if getNextMultiple(int(payloadLen), 4) != len(raw[36:]) {
-		return nil, fmt.Errorf("signed payload has invalid padding")
-	}
-
-	return MakeSignedPayload(signer, raw[36:36+payloadLen])
+	return MakeSignedPayload(signer, payload)
 }
 
 func getNextMultiple(x, n int) int {
