@@ -48,7 +48,8 @@ func (skey *SignerKey) GetAddress() (string, error) {
 		if err != nil {
 			return "", errors.Wrap(err, "failed to marshal signed payload")
 		}
-		raw = buffer
+		copy(raw, buffer[:32])
+		raw = append(raw, buffer[32:]...)
 	default:
 		return "", fmt.Errorf("unknown signer key type: %v", skey.Type)
 	}
