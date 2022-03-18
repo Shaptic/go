@@ -44,8 +44,8 @@ func TestSignerKey_GetAddress(t *testing.T) {
 			}
 
 			gotAddress, err := key.GetAddress()
-			assert.Equal(t, tt.wantAddress, gotAddress)
 			assert.NoError(t, err)
+			assert.Equal(t, tt.wantAddress, gotAddress)
 		})
 	}
 }

@@ -42,12 +42,13 @@ func (skey *SignerKey) GetAddress() (string, error) {
 		key := skey.MustPreAuthTx()
 		copy(raw, key[:])
 	case SignerKeyTypeSignerKeyTypeEd25519SignedPayload:
+		vb = strkey.VersionByteSignedPayload
 		sp := skey.MustEd25519SignedPayload()
 		buffer, err := sp.MarshalBinary()
 		if err != nil {
 			return "", errors.Wrap(err, "failed to marshal signed payload")
 		}
-		copy(raw, buffer[:])
+		raw = buffer
 	default:
 		return "", fmt.Errorf("unknown signer key type: %v", skey.Type)
 	}
