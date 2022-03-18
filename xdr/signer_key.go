@@ -125,7 +125,7 @@ func (skey *SignerKey) SetAddress(address string) error {
 			return innerErr
 		}
 
-		pubkey, innerErr := strkey.Decode(strkey.VersionByteAccountID, sp.Signer)
+		pubkey, innerErr := strkey.Decode(strkey.VersionByteAccountID, sp.Signer())
 		if innerErr != nil {
 			return innerErr
 		}
@@ -134,7 +134,7 @@ func (skey *SignerKey) SetAddress(address string) error {
 		copy(signer[:], pubkey)
 		*skey, innerErr = NewSignerKey(keytype, SignerKeyEd25519SignedPayload{
 			Ed25519: signer,
-			Payload: sp.Payload,
+			Payload: sp.Payload(),
 		})
 		return innerErr
 	}

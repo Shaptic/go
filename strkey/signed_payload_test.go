@@ -51,8 +51,8 @@ func TestSignedPayloads(t *testing.T) {
 			if !assert.NoError(t, err) || !assert.NotNil(t, sp) {
 				t.FailNow()
 			}
-			assert.Equal(t, testCase.signer, sp.Signer)
-			assert.Equal(t, testCase.hexPayload, hex.EncodeToString(sp.Payload))
+			assert.Equal(t, testCase.signer, sp.Signer())
+			assert.Equal(t, testCase.hexPayload, hex.EncodeToString(sp.Payload()))
 		})
 	}
 }
@@ -104,8 +104,8 @@ func TestSignedPayloadSizes(t *testing.T) {
 			if !assert.NotNil(t, sp) || !assert.NoError(t, err) {
 				t.FailNow()
 			}
-			assert.Equal(t, signer, sp.Signer)
-			assert.True(t, bytes.Equal(payload, sp.Payload))
+			assert.Equal(t, signer, sp.Signer())
+			assert.True(t, bytes.Equal(payload, sp.Payload()))
 
 			_, err = sp.Encode()
 			assert.NoError(t, err)

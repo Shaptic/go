@@ -8,8 +8,8 @@ import (
 )
 
 type SignedPayload struct {
-	Signer  string
-	Payload []byte
+	signer  string
+	payload []byte
 }
 
 const maxPayloadLen = 64
@@ -23,25 +23,33 @@ func NewSignedPayload(signerPublicKey string, payload []byte) (*SignedPayload, e
 			len(payload), maxPayloadLen)
 	}
 
-	return &SignedPayload{Signer: signerPublicKey, Payload: payload}, nil
+	return &SignedPayload{signer: signerPublicKey, payload: payload}, nil
 }
 
 // Encode turns a signed payload structure into its StrKey equivalent.
 func (sp *SignedPayload) Encode() (string, error) {
-	signerBytes, err := Decode(VersionByteAccountID, sp.Signer)
+	signerBytes, err := Decode(VersionByteAccountID, sp.Signer())
 	if err != nil {
 		return "", errors.Wrap(err, "failed to decode signed payload signer")
 	}
 
 	b := new(bytes.Buffer)
 	b.Write(signerBytes)
-	xdr.Marshal(b, sp.Payload)
+	xdr.Marshal(b, sp.Payload())
 
 	strkey, err := Encode(VersionByteSignedPayload, b.Bytes())
 	if err != nil {
 		return "", errors.Wrap(err, "failed to encode signed payload")
 	}
 	return strkey, nil
+}
+
+func (sp *SignedPayload) Signer() string {
+	return sp.signer
+}
+
+func (sp *SignedPayload) Payload() []byte {
+	return sp.payload
 }
 
 // DecodeSignedPayload transforms a P... signer into a `SignedPayload` instance.
