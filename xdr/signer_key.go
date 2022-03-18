@@ -26,33 +26,34 @@ func (skey *SignerKey) GetAddress() (string, error) {
 	}
 
 	vb := strkey.VersionByte(0)
-	raw := make([]byte, 32)
+	buf := bytes.NewBuffer([]byte{})
 
 	switch skey.Type {
 	case SignerKeyTypeSignerKeyTypeEd25519:
 		vb = strkey.VersionByteAccountID
 		key := skey.MustEd25519()
-		copy(raw, key[:])
+		buf.Write(key[:])
 	case SignerKeyTypeSignerKeyTypeHashX:
 		vb = strkey.VersionByteHashX
 		key := skey.MustHashX()
-		copy(raw, key[:])
+		buf.Write(key[:])
 	case SignerKeyTypeSignerKeyTypePreAuthTx:
 		vb = strkey.VersionByteHashTx
 		key := skey.MustPreAuthTx()
-		copy(raw, key[:])
+		buf.Write(key[:])
 	case SignerKeyTypeSignerKeyTypeEd25519SignedPayload:
 		sp := skey.MustEd25519SignedPayload()
+		vb = strkey.VersionByteSignedPayload
 		buffer, err := sp.MarshalBinary()
 		if err != nil {
 			return "", errors.Wrap(err, "failed to marshal signed payload")
 		}
-		copy(raw, buffer[:])
+		buf.Write(buffer[:])
 	default:
 		return "", fmt.Errorf("unknown signer key type: %v", skey.Type)
 	}
 
-	return strkey.Encode(vb, raw)
+	return strkey.Encode(vb, buf.Bytes())
 }
 
 // Equals returns true if `other` is equivalent to `skey`
