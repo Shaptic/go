@@ -14,15 +14,16 @@ type SignedPayload struct {
 
 const maxPayloadLen = 64
 
-func MakeSignedPayload(signerPublicKey string, payload []byte) (*SignedPayload, error) {
+// NewSignedPayload creates a signed payload from an account ID (G... address)
+// and a payload. The payload buffer is copied directly into the structure, so
+// it should not be modified after construction.
+func NewSignedPayload(signerPublicKey string, payload []byte) (*SignedPayload, error) {
 	if len(payload) > maxPayloadLen {
 		return nil, errors.Errorf("payload length %d exceeds max %d",
 			len(payload), maxPayloadLen)
 	}
 
-	src := make([]byte, len(payload))
-	copy(src, payload)
-	return &SignedPayload{Signer: signerPublicKey, Payload: src}, nil
+	return &SignedPayload{Signer: signerPublicKey, Payload: payload}, nil
 }
 
 // Encode turns a signed payload structure into its StrKey equivalent.
@@ -43,6 +44,7 @@ func (sp *SignedPayload) Encode() (string, error) {
 	return strkey, nil
 }
 
+// DecodeSignedPayload transforms a P... signer into a `SignedPayload` instance.
 func DecodeSignedPayload(address string) (*SignedPayload, error) {
 	raw, err := Decode(VersionByteSignedPayload, address)
 	if err != nil {
@@ -67,5 +69,5 @@ func DecodeSignedPayload(address string) (*SignedPayload, error) {
 		return nil, errors.New("invalid signed payload padding")
 	}
 
-	return MakeSignedPayload(signer, payload)
+	return NewSignedPayload(signer, payload)
 }

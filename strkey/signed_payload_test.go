@@ -38,7 +38,7 @@ func TestSignedPayloads(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.description, func(t *testing.T) {
 			payload, _ := hex.DecodeString(testCase.hexPayload)
-			sp, err := MakeSignedPayload(testCase.signer, payload)
+			sp, err := NewSignedPayload(testCase.signer, payload)
 			if !assert.NoError(t, err) || !assert.NotNil(t, sp) {
 				t.FailNow()
 			}
@@ -100,7 +100,7 @@ func TestSignedPayloadSizes(t *testing.T) {
 			_, err := rand.Read(payload)
 			assert.NoError(t, err)
 
-			sp, err := MakeSignedPayload(signer, payload)
+			sp, err := NewSignedPayload(signer, payload)
 			if !assert.NotNil(t, sp) || !assert.NoError(t, err) {
 				t.FailNow()
 			}
@@ -118,7 +118,7 @@ func TestSignedPayloadSizes(t *testing.T) {
 			_, err := rand.Read(payload)
 			assert.NoError(t, err)
 
-			sp, err := MakeSignedPayload(signer, payload)
+			sp, err := NewSignedPayload(signer, payload)
 			assert.Nil(t, sp)
 			assert.Error(t, err)
 		})

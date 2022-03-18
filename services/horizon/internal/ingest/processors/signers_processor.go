@@ -2,7 +2,6 @@ package processors
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/guregu/null"
 
@@ -139,8 +138,7 @@ func (p *SignersProcessor) Commit(ctx context.Context) error {
 					sponsor,
 				)
 				if err != nil {
-					return errors.Wrap(err,
-						fmt.Sprintf("Error inserting a signer (%s)", signer))
+					return errors.Wrapf(err, "Error inserting a signer (%s)", signer)
 				}
 
 				if rowsAffected != 1 {

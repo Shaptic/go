@@ -86,7 +86,7 @@ func HashTransactionV0(tx xdr.TransactionV0, passphrase string) ([32]byte, error
 		Memo:          tx.Memo,
 		Operations:    tx.Operations,
 		SeqNum:        tx.SeqNum,
-		Cond:          xdr.NewPreconditionWithTimeBounds(tx.TimeBounds),
+		Cond:          xdr.NewPreconditionsWithTimeBounds(tx.TimeBounds),
 	}
 	return HashTransaction(v1Tx, passphrase)
 }

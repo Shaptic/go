@@ -43,16 +43,11 @@ func (skey *SignerKey) GetAddress() (string, error) {
 		copy(raw, key[:])
 	case SignerKeyTypeSignerKeyTypeEd25519SignedPayload:
 		sp := skey.MustEd25519SignedPayload()
-		publicKey, err := strkey.Encode(strkey.VersionByteAccountID, sp.Ed25519[:])
+		buffer, err := sp.MarshalBinary()
 		if err != nil {
-			return "", errors.Wrap(err, "failed to decode payload signer")
+			return "", errors.Wrap(err, "failed to marshal signed payload")
 		}
-		spWrapper, err := strkey.MakeSignedPayload(publicKey, sp.Payload)
-		if err != nil {
-			return "", errors.Wrap(err, "failed to create signed payload")
-		}
-		return spWrapper.Encode()
-
+		copy(raw, buffer[:])
 	default:
 		return "", fmt.Errorf("unknown signer key type: %v", skey.Type)
 	}

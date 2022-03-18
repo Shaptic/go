@@ -10,6 +10,7 @@ func (tx *Transaction) TimeBounds() *TimeBounds {
 		return tx.Cond.TimeBounds
 	case PreconditionTypePrecondV2:
 		return tx.Cond.V2.TimeBounds
+	default:
+		panic("unsupported transaction type: " + tx.Cond.Type.String())
 	}
-	return nil
 }
