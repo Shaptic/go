@@ -827,9 +827,13 @@ func NewTransaction(params TransactionParams) (*Transaction, error) {
 	// to introduce a breaking change by dropping
 	// `TransactionParams.Timebounds`, nor require users to set up the
 	// `AdditionalPreconditions`, we need to coalesce the two values here.
-	err = params.AdditionalPreconditions.SetTimebounds(&params.Timebounds)
-	if err != nil {
-		return nil, errors.Wrap(err, "invalid timebounds")
+	//
+	// TODO: Find a better way to determine if params.Timebounds was passed?
+	if params.Timebounds.wasBuilt {
+		err = params.AdditionalPreconditions.SetTimebounds(&params.Timebounds)
+		if err != nil {
+			return nil, errors.Wrap(err, "invalid timebounds")
+		}
 	}
 
 	tx := &Transaction{
@@ -864,7 +868,7 @@ func NewTransaction(params TransactionParams) (*Transaction, error) {
 	tx.maxFee = int64(lo)
 
 	// Check that all preconditions are valid
-	if ok := tx.preconditions.Validate(); ok != nil {
+	if err = tx.preconditions.Validate(); err != nil {
 		return nil, errors.Wrap(err, "invalid preconditions")
 	}
 

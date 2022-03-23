@@ -28,7 +28,7 @@ type Timebounds struct {
 // using a factory method. This is done to ensure that default Timebound structs (which have no limits) are not
 // valid - you must explicitly specifiy the Timebound you require.
 func (tb *Timebounds) Validate() error {
-	if !tb.wasBuilt {
+	if tb == nil || !tb.wasBuilt {
 		return errors.New("timebounds must be constructed using NewTimebounds(), NewTimeout(), or NewInfiniteTimeout()")
 	}
 	if tb.MinTime < 0 {

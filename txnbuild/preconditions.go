@@ -49,17 +49,20 @@ func NewPreconditionsFromTimebounds(minTime, maxTime int64) Preconditions {
 // Note that timebounds are a *required* precondition, but they're passed here
 // by pointer in order to align with `TransactionParams.Timebound`.
 func (cond *Preconditions) SetTimebounds(timebounds *Timebounds) error {
-	if cond.timebounds != nil && (cond.timebounds.MinTime != timebounds.MinTime ||
-		cond.timebounds.MaxTime != timebounds.MaxTime) {
-		return errors.New("timebounds are already set")
+	if timebounds == nil {
+		return errors.New("timebounds are required")
 	}
 
 	if err := timebounds.Validate(); err != nil {
 		return err
 	}
 
-	if timebounds == nil {
-		return errors.New("timebounds are required")
+	if cond.timebounds != nil {
+		// only fail if they differ
+		if cond.timebounds.MinTime != timebounds.MinTime ||
+			cond.timebounds.MaxTime != timebounds.MaxTime {
+			return errors.New("timebounds set twice")
+		}
 	}
 
 	cond.timebounds = timebounds
@@ -73,10 +76,6 @@ func (cond *Preconditions) Timebounds() Timebounds {
 // Validate ensures that all enabled preconditions are valid.
 func (cond *Preconditions) Validate() error {
 	var err error
-
-	if cond.timebounds == nil {
-		return errors.New("timebounds are required")
-	}
 
 	if err = cond.timebounds.Validate(); err != nil {
 		return err
