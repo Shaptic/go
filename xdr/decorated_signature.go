@@ -22,7 +22,7 @@ func NewDecoratedSignatureForPayload(
 	hint := [4]byte{}
 	// copy the last four bytes of the payload into the hint
 	if len(payload) >= len(hint) {
-		copy(hint[:], payload[len(payload)-4:])
+		copy(hint[:], payload[len(payload)-len(hint):])
 	} else {
 		copy(hint[:], payload[:])
 	}
