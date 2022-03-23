@@ -1,12 +1,12 @@
 package xdr
 
 // NewDecoratedSignature constructs a decorated signature structure directly
-// from the given signature and key hint. Note that the key hint should
-// correspond to the key that created the signature, but this helper cannot
+// from the given signature and hint. Note that the hint should
+// correspond to the signer that created the signature, but this helper cannot
 // ensure that.
-func NewDecoratedSignature(sig []byte, keyHint [4]byte) DecoratedSignature {
+func NewDecoratedSignature(sig []byte, hint [4]byte) DecoratedSignature {
 	return DecoratedSignature{
-		Hint:      SignatureHint(keyHint),
+		Hint:      SignatureHint(hint),
 		Signature: Signature(sig),
 	}
 }
