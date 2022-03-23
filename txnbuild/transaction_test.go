@@ -26,7 +26,7 @@ func TestMissingTimebounds(t *testing.T) {
 			BaseFee:       MinBaseFee,
 		},
 	)
-	assert.EqualError(t, err, "invalid time bounds: timebounds must be constructed using NewTimebounds(), NewTimeout(), or NewInfiniteTimeout()")
+	assert.EqualError(t, err, "invalid timebounds: timebounds must be constructed using NewTimebounds(), NewTimeout(), or NewInfiniteTimeout()")
 }
 
 func TestTimebounds(t *testing.T) {
@@ -42,9 +42,9 @@ func TestTimebounds(t *testing.T) {
 		},
 	)
 	assert.NoError(t, err)
-	assert.Equal(t, tb, tx.timebounds)
-	assert.Equal(t, xdr.TimePoint(tb.MinTime), tx.envelope.V1.Tx.Cond.TimeBounds.MinTime)
-	assert.Equal(t, xdr.TimePoint(tb.MaxTime), tx.envelope.V1.Tx.Cond.TimeBounds.MaxTime)
+	assert.Equal(t, tb, tx.preconditions.Timebounds())
+	assert.Equal(t, xdr.TimePoint(tb.MinTime), tx.envelope.TimeBounds().MinTime)
+	assert.Equal(t, xdr.TimePoint(tb.MaxTime), tx.envelope.TimeBounds().MaxTime)
 }
 
 func TestMissingSourceAccount(t *testing.T) {

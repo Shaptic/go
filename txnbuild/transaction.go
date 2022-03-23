@@ -212,7 +212,7 @@ type Transaction struct {
 	sourceAccount SimpleAccount
 	operations    []Operation
 	memo          Memo
-	timebounds    Timebounds
+	preconditions Preconditions
 }
 
 // BaseFee returns the per operation fee for this transaction.
@@ -242,7 +242,7 @@ func (t *Transaction) Memo() Memo {
 
 // Timebounds returns the Timebounds configured for this transaction.
 func (t *Transaction) Timebounds() Timebounds {
-	return t.timebounds
+	return t.preconditions.Timebounds()
 }
 
 // Operations returns the list of operations included in this transaction.
@@ -770,11 +770,11 @@ func transactionFromParsedXDR(xdrEnv xdr.TransactionEnvelope) (*GenericTransacti
 		},
 		operations: nil,
 		memo:       nil,
-		timebounds: Timebounds{},
 	}
 
 	if timeBounds := xdrEnv.TimeBounds(); timeBounds != nil {
-		newTx.simple.timebounds = NewTimebounds(int64(timeBounds.MinTime), int64(timeBounds.MaxTime))
+		newTx.simple.preconditions = NewPreconditionsFromTimebounds(
+			int64(timeBounds.MinTime), int64(timeBounds.MaxTime))
 	}
 
 	newTx.simple.memo, err = memoFromXDR(xdrEnv.Memo())
@@ -797,23 +797,23 @@ func transactionFromParsedXDR(xdrEnv xdr.TransactionEnvelope) (*GenericTransacti
 // TransactionParams is a container for parameters
 // which are used to construct new Transaction instances
 type TransactionParams struct {
-	SourceAccount        Account
-	IncrementSequenceNum bool
-	Operations           []Operation
-	BaseFee              int64
-	Memo                 Memo
-	Timebounds           Timebounds
+	SourceAccount           Account
+	IncrementSequenceNum    bool
+	Operations              []Operation
+	BaseFee                 int64
+	Memo                    Memo
+	Timebounds              Timebounds
+	AdditionalPreconditions Preconditions
 }
 
 // NewTransaction returns a new Transaction instance
 func NewTransaction(params TransactionParams) (*Transaction, error) {
-	var sequence int64
-	var err error
-
 	if params.SourceAccount == nil {
 		return nil, errors.New("transaction has no source account")
 	}
 
+	var sequence int64
+	var err error
 	if params.IncrementSequenceNum {
 		sequence, err = params.SourceAccount.IncrementSequenceNumber()
 	} else {
@@ -823,15 +823,24 @@ func NewTransaction(params TransactionParams) (*Transaction, error) {
 		return nil, errors.Wrap(err, "could not obtain account sequence")
 	}
 
+	// Because both V1 and V2 preconditions allow timebounds, and we don't want
+	// to introduce a breaking change by dropping
+	// `TransactionParams.Timebounds`, nor require users to set up the
+	// `AdditionalPreconditions`, we need to coalesce the two values here.
+	err = params.AdditionalPreconditions.SetTimebounds(&params.Timebounds)
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid timebounds")
+	}
+
 	tx := &Transaction{
 		baseFee: params.BaseFee,
 		sourceAccount: SimpleAccount{
 			AccountID: params.SourceAccount.GetAccountID(),
 			Sequence:  sequence,
 		},
-		operations: params.Operations,
-		memo:       params.Memo,
-		timebounds: params.Timebounds,
+		operations:    params.Operations,
+		memo:          params.Memo,
+		preconditions: params.AdditionalPreconditions,
 	}
 	var sourceAccount xdr.MuxedAccount
 	if err = sourceAccount.SetAddress(tx.sourceAccount.AccountID); err != nil {
@@ -854,10 +863,9 @@ func NewTransaction(params TransactionParams) (*Transaction, error) {
 	}
 	tx.maxFee = int64(lo)
 
-	// Check and set the timebounds
-	err = tx.timebounds.Validate()
-	if err != nil {
-		return nil, errors.Wrap(err, "invalid time bounds")
+	// Check that all preconditions are valid
+	if ok := tx.preconditions.Validate(); ok != nil {
+		return nil, errors.Wrap(err, "invalid preconditions")
 	}
 
 	envelope := xdr.TransactionEnvelope{
@@ -867,13 +875,7 @@ func NewTransaction(params TransactionParams) (*Transaction, error) {
 				SourceAccount: sourceAccount,
 				Fee:           xdr.Uint32(tx.maxFee),
 				SeqNum:        xdr.SequenceNumber(sequence),
-				Cond: xdr.Preconditions{
-					Type: xdr.PreconditionTypePrecondTime,
-					TimeBounds: &xdr.TimeBounds{
-						MinTime: xdr.TimePoint(tx.timebounds.MinTime),
-						MaxTime: xdr.TimePoint(tx.timebounds.MaxTime),
-					},
-				},
+				Cond:          tx.preconditions.BuildXDR(),
 			},
 			Signatures: nil,
 		},
