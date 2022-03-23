@@ -31,16 +31,17 @@ func TestMissingTimebounds(t *testing.T) {
 
 func TestTimebounds(t *testing.T) {
 	kp0 := newKeypair0()
-
 	tb := NewTimeout(300)
-	tx, err := NewTransaction(
-		TransactionParams{
-			SourceAccount: &SimpleAccount{AccountID: kp0.Address(), Sequence: 1},
-			Operations:    []Operation{&BumpSequence{BumpTo: 0}},
-			BaseFee:       MinBaseFee,
-			Timebounds:    tb,
-		},
-	)
+
+	tp := TransactionParams{
+		SourceAccount: &SimpleAccount{AccountID: kp0.Address(), Sequence: 1},
+		Operations:    []Operation{&BumpSequence{BumpTo: 0}},
+		BaseFee:       MinBaseFee,
+	}
+
+	// Happy path: old timebound method used
+	tp.Timebounds = tb
+	tx, err := NewTransaction(tp)
 	assert.NoError(t, err)
 	assert.Equal(t, tb, tx.preconditions.Timebounds())
 	assert.Equal(t, xdr.TimePoint(tb.MinTime), tx.envelope.TimeBounds().MinTime)
@@ -49,37 +50,29 @@ func TestTimebounds(t *testing.T) {
 	// Transactions with timebounds set and timebounds-only preconditions set
 	// should result in identical XDR.
 	cond := NewPreconditions(&tb)
-	tx2, err := NewTransaction(
-		TransactionParams{
-			SourceAccount: &SimpleAccount{AccountID: kp0.Address(), Sequence: 1},
-			Operations:    []Operation{&BumpSequence{BumpTo: 0}},
-			BaseFee:       MinBaseFee,
-
-			AdditionalPreconditions: cond,
-		},
-	)
+	tp.Timebounds = Timebounds{}
+	tp.AdditionalPreconditions = cond
+	tx2, err := NewTransaction(tp)
 	assert.NoError(t, err)
+	assert.Equal(t, tb, tx.preconditions.Timebounds())
 
 	b1, err := tx.ToXDR().MarshalBinary()
 	assert.NoError(t, err)
-
 	b2, err := tx2.ToXDR().MarshalBinary()
 	assert.NoError(t, err)
-
 	assert.EqualValues(t, b1, b2)
 
-	// Transactions built with both timebound options set should fail.
-	_, err = NewTransaction(
-		TransactionParams{
-			SourceAccount: &SimpleAccount{AccountID: kp0.Address(), Sequence: 1},
-			Operations:    []Operation{&BumpSequence{BumpTo: 0}},
-			BaseFee:       MinBaseFee,
-
-			AdditionalPreconditions: cond,
-			Timebounds:              NewTimebounds(1, 2),
-		},
-	)
+	// Transactions built with both (and differing) ways to set a timebound
+	// precondition should fail...
+	tp.AdditionalPreconditions = cond
+	tp.Timebounds = NewTimebounds(1, 2)
+	_, err = NewTransaction(tp)
 	assert.EqualError(t, err, "invalid timebounds: timebounds set twice")
+
+	// ...but identical values should pass.
+	tp.Timebounds = *cond.timebounds
+	_, err = NewTransaction(tp)
+	assert.NoError(t, err)
 }
 
 func TestMissingSourceAccount(t *testing.T) {

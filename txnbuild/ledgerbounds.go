@@ -3,16 +3,11 @@ package txnbuild
 import "github.com/stellar/go/support/errors"
 
 // Ledgerbounds represent a transaction precondition that controls the ledger
-// range for which a transaction is valid.
-//
-// Setting MaxLedger = 0 indicates there is no maximum ledger.
+// range for which a transaction is valid. Setting MaxLedger = 0 indicates there
+// is no maximum ledger.
 type Ledgerbounds struct {
 	MinLedger uint32
 	MaxLedger uint32
-}
-
-func NewLedgerbounds(minLedger, maxLedger uint32) Ledgerbounds {
-	return Ledgerbounds{minLedger, maxLedger}
 }
 
 func (lb *Ledgerbounds) Validate() error {
