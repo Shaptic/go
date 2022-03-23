@@ -27,15 +27,21 @@ func TestDecoratedSignatures(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		t.Run(fmt.Sprintf("%d-byte", len(testCase.payload)), func(t *testing.T) {
-			decoSig := xdr.NewDecoratedSignature(signature, keyHint)
-			assert.EqualValues(t, keyHint, decoSig.Hint)
-			assert.EqualValues(t, signature, decoSig.Signature)
+		t.Run(
+			fmt.Sprintf("%d-byte signed payload decorated sig", len(testCase.payload)),
+			func(t *testing.T) {
+				decoSig := xdr.NewDecoratedSignature(signature, keyHint)
+				assert.EqualValues(t, keyHint, decoSig.Hint)
+				assert.EqualValues(t, signature, decoSig.Signature)
+			})
 
-			decoSig = xdr.NewDecoratedSignatureForPayload(
-				signature, keyHint, testCase.payload)
-			assert.EqualValues(t, testCase.expectedHint, decoSig.Hint)
-			assert.EqualValues(t, signature, decoSig.Signature)
-		})
+		t.Run(
+			fmt.Sprintf("%d-byte decorated sig", len(testCase.payload)),
+			func(t *testing.T) {
+				decoSig := xdr.NewDecoratedSignatureForPayload(
+					signature, keyHint, testCase.payload)
+				assert.EqualValues(t, testCase.expectedHint, decoSig.Hint)
+				assert.EqualValues(t, signature, decoSig.Signature)
+			})
 	}
 }

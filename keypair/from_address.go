@@ -75,7 +75,7 @@ func (kp *FromAddress) SignDecorated(input []byte) (xdr.DecoratedSignature, erro
 	return xdr.DecoratedSignature{}, ErrCannotSign
 }
 
-func (kp *FromAddress) SignDecoratedPayload(input []byte) (xdr.DecoratedSignature, error) {
+func (kp *FromAddress) SignPayloadDecorated(input []byte) (xdr.DecoratedSignature, error) {
 	return xdr.DecoratedSignature{}, ErrCannotSign
 }
 

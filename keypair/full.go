@@ -112,9 +112,9 @@ func (kp *Full) SignDecorated(input []byte) (xdr.DecoratedSignature, error) {
 	return xdr.NewDecoratedSignature(sig, kp.Hint()), nil
 }
 
-// SignDecoratedPayload returns a decorated signature using this key's hint and
+// SignPayloadDecorated returns a decorated signature using this key's hint and
 // the last four bytes of both the input and the signature on that input.
-func (kp *Full) SignDecoratedPayload(input []byte) (xdr.DecoratedSignature, error) {
+func (kp *Full) SignPayloadDecorated(input []byte) (xdr.DecoratedSignature, error) {
 	sig, err := kp.Sign(input)
 	if err != nil {
 		return xdr.DecoratedSignature{}, err
