@@ -39,15 +39,14 @@ func NewPreconditions(timebounds *Timebounds) Preconditions {
 	return cond
 }
 
-func NewPreconditionsFromTimebounds(minTime, maxTime int64) Preconditions {
+func NewPreconditionsWithTimebounds(minTime, maxTime int64) Preconditions {
 	tb := NewTimebounds(minTime, maxTime)
 	return NewPreconditions(&tb)
 }
 
-// SetTimebounds enables the timebound precondition.
-//
-// Note that timebounds are a *required* precondition, but they're passed here
-// by pointer in order to align with `TransactionParams.Timebound`.
+// SetTimebounds enables the timebound precondition. Note that timebounds are a
+// *required* precondition, but they're passed here by pointer in order to align
+// with `TransactionParams.Timebounds`.
 func (cond *Preconditions) SetTimebounds(timebounds *Timebounds) error {
 	if timebounds == nil {
 		return errors.New("timebounds are required")

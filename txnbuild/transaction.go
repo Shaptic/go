@@ -773,7 +773,7 @@ func transactionFromParsedXDR(xdrEnv xdr.TransactionEnvelope) (*GenericTransacti
 	}
 
 	if timeBounds := xdrEnv.TimeBounds(); timeBounds != nil {
-		newTx.simple.preconditions = NewPreconditionsFromTimebounds(
+		newTx.simple.preconditions = NewPreconditionsWithTimebounds(
 			int64(timeBounds.MinTime), int64(timeBounds.MaxTime))
 	}
 
