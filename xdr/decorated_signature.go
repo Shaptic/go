@@ -20,25 +20,19 @@ func NewDecoratedSignatureForPayload(
 	sig []byte, keyHint [4]byte, payload []byte,
 ) DecoratedSignature {
 	hint := [4]byte{}
-	j := iMax(0, len(payload)-4)
+	// copy the last four bytes of the payload into the hint
+	if len(payload) >= len(hint) {
+		copy(hint[:], payload[len(payload)-4:])
+	} else {
+		copy(hint[:], payload[:])
+	}
 
 	for i := 0; i < len(keyHint); i++ {
-		hint[i] = keyHint[i]
-		if j < len(payload) {
-			hint[i] ^= payload[j]
-			j++
-		}
+		hint[i] ^= keyHint[i]
 	}
 
 	return DecoratedSignature{
 		Hint:      SignatureHint(hint),
 		Signature: Signature(sig),
 	}
-}
-
-func iMax(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
