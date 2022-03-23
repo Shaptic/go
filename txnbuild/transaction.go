@@ -794,8 +794,8 @@ func transactionFromParsedXDR(xdrEnv xdr.TransactionEnvelope) (*GenericTransacti
 	return newTx, nil
 }
 
-// TransactionParams is a container for parameters
-// which are used to construct new Transaction instances
+// TransactionParams is a container for parameters which are used to construct
+// new Transaction instances
 type TransactionParams struct {
 	SourceAccount           Account
 	IncrementSequenceNum    bool
@@ -827,9 +827,7 @@ func NewTransaction(params TransactionParams) (*Transaction, error) {
 	// to introduce a breaking change by dropping
 	// `TransactionParams.Timebounds`, nor require users to set up the
 	// `AdditionalPreconditions`, we need to coalesce the two values here.
-	//
-	// TODO: Find a better way to determine if params.Timebounds was passed?
-	if params.Timebounds.wasBuilt {
+	if !params.Timebounds.Equals(Timebounds{}) {
 		err = params.AdditionalPreconditions.SetTimebounds(&params.Timebounds)
 		if err != nil {
 			return nil, errors.Wrap(err, "invalid timebounds")

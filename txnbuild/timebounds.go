@@ -48,6 +48,12 @@ func (tb *Timebounds) Validate() error {
 	return nil
 }
 
+func (tb Timebounds) Equals(other Timebounds) bool {
+	return tb.MinTime == other.MinTime &&
+		tb.MaxTime == other.MaxTime &&
+		tb.wasBuilt == other.wasBuilt
+}
+
 // NewTimebounds is a factory method that constructs a Timebounds object from a min and max time.
 // A Transaction cannot be built unless a Timebounds object is provided through a factory method.
 func NewTimebounds(minTime, maxTime int64) Timebounds {
