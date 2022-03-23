@@ -827,7 +827,7 @@ func NewTransaction(params TransactionParams) (*Transaction, error) {
 	// to introduce a breaking change by dropping
 	// `TransactionParams.Timebounds`, nor require users to set up the
 	// `AdditionalPreconditions`, we need to coalesce the two values here.
-	if !params.Timebounds.Equals(Timebounds{}) {
+	if !params.Timebounds.IsEmpty() {
 		err = params.AdditionalPreconditions.SetTimebounds(&params.Timebounds)
 		if err != nil {
 			return nil, errors.Wrap(err, "invalid timebounds")

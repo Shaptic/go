@@ -128,7 +128,7 @@ func (cond *Preconditions) BuildXDR() xdr.Preconditions {
 			ExtraSigners:    cond.ExtraSigners,
 		}
 
-		// micro-optimization: if the ledgerbounds always succeed, omit them
+		// micro-optimization: if the ledgerbounds will always succeed, omit them
 		if cond.Ledgerbounds != nil && !(cond.Ledgerbounds.MinLedger == 0 &&
 			cond.Ledgerbounds.MaxLedger == 0) {
 			xdrPrecond.LedgerBounds = &xdr.LedgerBounds{

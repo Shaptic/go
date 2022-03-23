@@ -75,6 +75,30 @@ func TestTimebounds(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestV2Preconditions(t *testing.T) {
+	kp0 := newKeypair0()
+	tb := NewTimeout(300)
+
+	cond := NewPreconditions(&tb)
+	cond.Ledgerbounds = &Ledgerbounds{0, 1}
+	cond.MinSequenceNumber = nil
+	cond.MinSequenceNumberAge = xdr.Duration(10)
+	cond.MinSequenceNumberLedgerGap = 2
+	assert.True(t, cond.HasV2Conditions())
+
+	tp := TransactionParams{
+		SourceAccount: &SimpleAccount{AccountID: kp0.Address(), Sequence: 1},
+		Operations:    []Operation{&BumpSequence{BumpTo: 0}},
+		BaseFee:       MinBaseFee,
+
+		AdditionalPreconditions: cond,
+	}
+
+	tx, err := NewTransaction(tp)
+	assert.NoError(t, err)
+	assert.Equal(t, cond, tx.preconditions)
+}
+
 func TestMissingSourceAccount(t *testing.T) {
 	_, err := NewTransaction(TransactionParams{})
 	assert.EqualError(t, err, "transaction has no source account")
