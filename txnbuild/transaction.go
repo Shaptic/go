@@ -779,8 +779,7 @@ func transactionFromParsedXDR(xdrEnv xdr.TransactionEnvelope) (*GenericTransacti
 	}
 
 	if timeBounds := xdrEnv.TimeBounds(); timeBounds != nil {
-		newTx.simple.timebounds = NewTimebounds(
-			int64(timeBounds.MinTime), int64(timeBounds.MaxTime))
+		newTx.simple.timebounds = NewTimebounds(int64(timeBounds.MinTime), int64(timeBounds.MaxTime))
 	}
 
 	newTx.simple.memo, err = memoFromXDR(xdrEnv.Memo())
@@ -802,12 +801,13 @@ func transactionFromParsedXDR(xdrEnv xdr.TransactionEnvelope) (*GenericTransacti
 
 // NewTransaction returns a new Transaction instance
 func NewTransaction(params TransactionParams) (*Transaction, error) {
+	var sequence int64
+	var err error
+
 	if params.SourceAccount == nil {
 		return nil, errors.New("transaction has no source account")
 	}
 
-	var sequence int64
-	var err error
 	if params.IncrementSequenceNum {
 		sequence, err = params.SourceAccount.IncrementSequenceNumber()
 	} else {

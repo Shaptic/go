@@ -14,25 +14,13 @@ type TransactionParams struct {
 	BaseFee              int64
 	Memo                 Memo
 
-	// Transaction is only valid during a certain time range.
-	Timebounds Timebounds
-	// Transaction is valid for ledger numbers n such that minLedger <= n <
-	// maxLedger (if maxLedger == 0, then only minLedger is checked)
-	Ledgerbounds *Ledgerbounds
-	// If nil, the transaction is only valid when sourceAccount's sequence
-	// number "N" is seqNum - 1. Otherwise, valid when N satisfies minSeqNum <=
-	// N < tx.seqNum.
-	MinSequenceNumber *int64
-	// Transaction is valid if the current ledger time is at least
-	// minSequenceNumberAge greater than the source account's seqTime.
-	MinSequenceNumberAge xdr.Duration
-	// Transaction is valid if the current ledger number is at least
-	// minSequenceNumberLedgerGap greater than the source account's seqLedger.
+	// Transaction validity preconditions
+	Timebounds                 Timebounds
+	Ledgerbounds               *Ledgerbounds
+	MinSequenceNumber          *int64
+	MinSequenceNumberAge       xdr.Duration
 	MinSequenceNumberLedgerGap uint32
-	// Transaction is valid if there is a signature corresponding to every
-	// Signer in this array, even if the signature is not otherwise required by
-	// the source account or operations.
-	ExtraSigners []xdr.SignerKey
+	ExtraSigners               []xdr.SignerKey
 }
 
 // Validate ensures that all enabled preconditions are valid.
@@ -67,9 +55,9 @@ func (params *TransactionParams) hasV2Conditions() bool {
 		len(params.ExtraSigners) > 0)
 }
 
-// BuildXDR will create a precondition structure that varies depending on
-// whether or not there are additional preconditions besides timebounds (which
-// are required).
+// BuildPreconditionsXDR will create a precondition structure that varies
+// depending on whether or not there are additional preconditions besides
+// timebounds (which are required).
 func (params *TransactionParams) BuildPreconditionsXDR() xdr.Preconditions {
 	xdrCond := xdr.Preconditions{}
 	xdrTimeBounds := xdr.TimeBounds{

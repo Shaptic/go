@@ -33,15 +33,12 @@ func TestTimebounds(t *testing.T) {
 	kp0 := newKeypair0()
 	tb := NewTimeout(300)
 
-	tp := TransactionParams{
+	tx, err := NewTransaction(TransactionParams{
 		SourceAccount: &SimpleAccount{AccountID: kp0.Address(), Sequence: 1},
 		Operations:    []Operation{&BumpSequence{BumpTo: 0}},
 		BaseFee:       MinBaseFee,
-	}
-
-	// Happy path: old timebound method used
-	tp.Timebounds = tb
-	tx, err := NewTransaction(tp)
+		Timebounds:    tb,
+	})
 	assert.NoError(t, err)
 	assert.Equal(t, tb, tx.Timebounds())
 	assert.Equal(t, xdr.TimePoint(tb.MinTime), tx.envelope.TimeBounds().MinTime)
