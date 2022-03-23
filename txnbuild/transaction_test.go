@@ -43,60 +43,34 @@ func TestTimebounds(t *testing.T) {
 	tp.Timebounds = tb
 	tx, err := NewTransaction(tp)
 	assert.NoError(t, err)
-	assert.Equal(t, tb, tx.preconditions.Timebounds())
+	assert.Equal(t, tb, tx.Timebounds())
 	assert.Equal(t, xdr.TimePoint(tb.MinTime), tx.envelope.TimeBounds().MinTime)
 	assert.Equal(t, xdr.TimePoint(tb.MaxTime), tx.envelope.TimeBounds().MaxTime)
-
-	// Transactions with timebounds set and timebounds-only preconditions set
-	// should result in identical XDR.
-	cond := NewPreconditions(&tb)
-	tp.Timebounds = Timebounds{}
-	tp.AdditionalPreconditions = cond
-	tx2, err := NewTransaction(tp)
-	assert.NoError(t, err)
-	assert.Equal(t, tb, tx.preconditions.Timebounds())
-
-	b1, err := tx.ToXDR().MarshalBinary()
-	assert.NoError(t, err)
-	b2, err := tx2.ToXDR().MarshalBinary()
-	assert.NoError(t, err)
-	assert.EqualValues(t, b1, b2)
-
-	// Transactions built with both (and differing) ways to set a timebound
-	// precondition should fail...
-	tp.AdditionalPreconditions = cond
-	tp.Timebounds = NewTimebounds(1, 2)
-	_, err = NewTransaction(tp)
-	assert.EqualError(t, err, "invalid timebounds: timebounds set twice")
-
-	// ...but identical values should pass.
-	tp.Timebounds = *cond.timebounds
-	_, err = NewTransaction(tp)
-	assert.NoError(t, err)
 }
 
 func TestV2Preconditions(t *testing.T) {
 	kp0 := newKeypair0()
 	tb := NewTimeout(300)
 
-	cond := NewPreconditions(&tb)
-	cond.Ledgerbounds = &Ledgerbounds{0, 1}
-	cond.MinSequenceNumber = nil
-	cond.MinSequenceNumberAge = xdr.Duration(10)
-	cond.MinSequenceNumberLedgerGap = 2
-	assert.True(t, cond.HasV2Conditions())
-
-	tp := TransactionParams{
+	txp := TransactionParams{
 		SourceAccount: &SimpleAccount{AccountID: kp0.Address(), Sequence: 1},
 		Operations:    []Operation{&BumpSequence{BumpTo: 0}},
 		BaseFee:       MinBaseFee,
-
-		AdditionalPreconditions: cond,
+		Timebounds:    tb,
 	}
+	txp.Ledgerbounds = &Ledgerbounds{0, 1}
+	txp.MinSequenceNumber = nil
+	txp.MinSequenceNumberAge = xdr.Duration(10)
+	txp.MinSequenceNumberLedgerGap = 2
+	assert.True(t, txp.hasV2Conditions())
 
-	tx, err := NewTransaction(tp)
+	tx, err := NewTransaction(txp)
 	assert.NoError(t, err)
-	assert.Equal(t, cond, tx.preconditions)
+	assert.Equal(t, txp.Timebounds, tx.timebounds)
+	assert.Equal(t, txp.Ledgerbounds, tx.ledgerbounds)
+	assert.Equal(t, txp.MinSequenceNumber, tx.minSequenceNumber)
+	assert.Equal(t, txp.MinSequenceNumberAge, tx.minSequenceNumberAge)
+	assert.Equal(t, txp.MinSequenceNumberLedgerGap, tx.minSequenceNumberLedgerGap)
 }
 
 func TestMissingSourceAccount(t *testing.T) {

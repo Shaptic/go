@@ -212,7 +212,13 @@ type Transaction struct {
 	sourceAccount SimpleAccount
 	operations    []Operation
 	memo          Memo
-	preconditions Preconditions
+
+	timebounds                 Timebounds
+	ledgerbounds               *Ledgerbounds
+	minSequenceNumber          *int64
+	minSequenceNumberAge       xdr.Duration
+	minSequenceNumberLedgerGap uint32
+	extraSigners               []xdr.SignerKey
 }
 
 // BaseFee returns the per operation fee for this transaction.
@@ -242,7 +248,7 @@ func (t *Transaction) Memo() Memo {
 
 // Timebounds returns the Timebounds configured for this transaction.
 func (t *Transaction) Timebounds() Timebounds {
-	return t.preconditions.Timebounds()
+	return t.timebounds
 }
 
 // Operations returns the list of operations included in this transaction.
@@ -773,7 +779,7 @@ func transactionFromParsedXDR(xdrEnv xdr.TransactionEnvelope) (*GenericTransacti
 	}
 
 	if timeBounds := xdrEnv.TimeBounds(); timeBounds != nil {
-		newTx.simple.preconditions = NewPreconditionsWithTimebounds(
+		newTx.simple.timebounds = NewTimebounds(
 			int64(timeBounds.MinTime), int64(timeBounds.MaxTime))
 	}
 
@@ -794,18 +800,6 @@ func transactionFromParsedXDR(xdrEnv xdr.TransactionEnvelope) (*GenericTransacti
 	return newTx, nil
 }
 
-// TransactionParams is a container for parameters which are used to construct
-// new Transaction instances
-type TransactionParams struct {
-	SourceAccount           Account
-	IncrementSequenceNum    bool
-	Operations              []Operation
-	BaseFee                 int64
-	Memo                    Memo
-	Timebounds              Timebounds
-	AdditionalPreconditions Preconditions
-}
-
 // NewTransaction returns a new Transaction instance
 func NewTransaction(params TransactionParams) (*Transaction, error) {
 	if params.SourceAccount == nil {
@@ -823,27 +817,23 @@ func NewTransaction(params TransactionParams) (*Transaction, error) {
 		return nil, errors.Wrap(err, "could not obtain account sequence")
 	}
 
-	// Because both V1 and V2 preconditions allow timebounds, and we don't want
-	// to introduce a breaking change by dropping
-	// `TransactionParams.Timebounds`, nor require users to set up the
-	// `AdditionalPreconditions`, we need to coalesce the two values here.
-	if params.Timebounds != (Timebounds{}) {
-		err = params.AdditionalPreconditions.SetTimebounds(&params.Timebounds)
-		if err != nil {
-			return nil, errors.Wrap(err, "invalid timebounds")
-		}
-	}
-
 	tx := &Transaction{
 		baseFee: params.BaseFee,
 		sourceAccount: SimpleAccount{
 			AccountID: params.SourceAccount.GetAccountID(),
 			Sequence:  sequence,
 		},
-		operations:    params.Operations,
-		memo:          params.Memo,
-		preconditions: params.AdditionalPreconditions,
+		operations: params.Operations,
+		memo:       params.Memo,
+
+		timebounds:                 params.Timebounds,
+		ledgerbounds:               params.Ledgerbounds,
+		minSequenceNumber:          params.MinSequenceNumber,
+		minSequenceNumberAge:       params.MinSequenceNumberAge,
+		minSequenceNumberLedgerGap: params.MinSequenceNumberLedgerGap,
+		extraSigners:               params.ExtraSigners,
 	}
+
 	var sourceAccount xdr.MuxedAccount
 	if err = sourceAccount.SetAddress(tx.sourceAccount.AccountID); err != nil {
 		return nil, errors.Wrap(err, "account id is not valid")
@@ -866,7 +856,8 @@ func NewTransaction(params TransactionParams) (*Transaction, error) {
 	tx.maxFee = int64(lo)
 
 	// Check that all preconditions are valid
-	if err = tx.preconditions.Validate(); err != nil {
+	err = params.Validate()
+	if err != nil {
 		return nil, errors.Wrap(err, "invalid preconditions")
 	}
 
@@ -877,7 +868,7 @@ func NewTransaction(params TransactionParams) (*Transaction, error) {
 				SourceAccount: sourceAccount,
 				Fee:           xdr.Uint32(tx.maxFee),
 				SeqNum:        xdr.SequenceNumber(sequence),
-				Cond:          tx.preconditions.BuildXDR(),
+				Cond:          params.BuildPreconditionsXDR(),
 			},
 			Signatures: nil,
 		},
