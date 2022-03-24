@@ -15,9 +15,13 @@ file.  This project adheres to [Semantic Versioning](http://semver.org/).
      SourceAccount: someAccount,
      // ... other parameters ...
 -    Timebounds:    NewTimeout(5),
-+    Preconditions: Preconditions{Timebounds: NewTimeout(5)},
++    Preconditions: Preconditions{TimeBounds: NewTimeout(5)},
  })
 ```
+
+* `Timebounds` has been renamed to `TimeBounds`, though a type alias remains.
+
+* A `*TimeBounds` structure is no longer considered valid (via `Validate()`) if it's `nil`. This further reinforces the fact that transactions need timebounds.
 
 
 ## [9.0.0](https://github.com/stellar/go/releases/tag/horizonclient-v9.0.0) - 2022-01-10

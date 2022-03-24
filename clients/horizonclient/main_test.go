@@ -1483,7 +1483,7 @@ func TestFetchTimebounds(t *testing.T) {
 	ServerTimeMap["localhost"] = newRecord
 	st, err = client.FetchTimebounds(100)
 	assert.NoError(t, err)
-	assert.IsType(t, st, txnbuild.Timebounds{})
+	assert.IsType(t, st, txnbuild.TimeBounds{})
 	assert.Equal(t, st.MinTime, int64(0))
 	// time should be 200, serverTime + 100seconds
 	assert.Equal(t, st.MaxTime, int64(200))

@@ -8,7 +8,7 @@ import (
 // Preconditions is a container for all transaction preconditions.
 type Preconditions struct {
 	// Transaction is only valid during a certain time range.
-	Timebounds Timebounds
+	Timebounds TimeBounds
 	// Transaction is valid for ledger numbers n such that minLedger <= n <
 	// maxLedger (if maxLedger == 0, then only minLedger is checked)
 	Ledgerbounds *Ledgerbounds

@@ -241,7 +241,7 @@ func (t *Transaction) Memo() Memo {
 }
 
 // Timebounds returns the Timebounds configured for this transaction.
-func (t *Transaction) Timebounds() Timebounds {
+func (t *Transaction) Timebounds() TimeBounds {
 	return t.preconditions.Timebounds
 }
 
