@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this
 file.  This project adheres to [Semantic Versioning](http://semver.org/).
 
 
+## Unreleased
+
+### Breaking changes
+
+* Adds support for Protocol 19 transaction preconditions ([CAP-21](https://stellar.org/protocol/cap-21)). There are many new ways for a transaction to be (in)valid (see the new `Preconditions` structure), and the corresponding breaking change is in how transactions are built:
+
+```diff
+ tx, err := NewTransaction(TransactionParams{
+     SourceAccount: someAccount,
+     // ... other parameters ...
+-    Timebounds:    NewTimeout(5),
++    Preconditions: Preconditions{Timebounds: NewTimeout(5)},
+ })
+```
+
+
 ## [9.0.0](https://github.com/stellar/go/releases/tag/horizonclient-v9.0.0) - 2022-01-10
 
 * Enable Muxed Accounts ([SEP-23](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0023.md)) by default ([#4169](https://github.com/stellar/go/pull/4169)):
