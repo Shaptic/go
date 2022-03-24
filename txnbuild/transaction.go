@@ -849,7 +849,8 @@ func NewTransaction(params TransactionParams) (*Transaction, error) {
 	// if maxFee is negative then there must have been an int overflow
 	hi, lo := bits.Mul64(uint64(params.BaseFee), uint64(len(params.Operations)))
 	if hi > 0 || lo > math.MaxUint32 {
-		return nil, errors.Errorf("base fee %d results in an overflow of max fee", params.BaseFee)
+		return nil, errors.Errorf(
+			"base fee %d results in an overflow of max fee", params.BaseFee)
 	}
 	tx.maxFee = int64(lo)
 

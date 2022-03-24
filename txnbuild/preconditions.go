@@ -48,8 +48,8 @@ func (cond *Preconditions) Validate() error {
 		return err
 	}
 
-	if ok := cond.ValidateSigners(); !ok {
-		return errors.New("invalid signers")
+	if len(cond.ExtraSigners) > 2 {
+		return errors.New("only 2 extra signers allowed")
 	}
 
 	if cond.Ledgerbounds != nil {
@@ -60,10 +60,6 @@ func (cond *Preconditions) Validate() error {
 	}
 
 	return nil
-}
-
-func (cond *Preconditions) ValidateSigners() bool {
-	return len(cond.ExtraSigners) <= 2
 }
 
 // BuildXDR will create a precondition structure that varies depending on

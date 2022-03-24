@@ -136,11 +136,14 @@ func TestPreconditions(t *testing.T) {
 
 // TestPreconditionsValidation ensures that validation fails when necessary.
 func TestPreconditionsValidation(t *testing.T) {
-	pc := NewPreconditionsWithTimebounds(27, 42)
-	pc.ExtraSigners = Signers
-
 	t.Run("too many signers", func(t *testing.T) {
-		pc.ExtraSigners = Signers
+		pc := NewPreconditionsWithTimebounds(27, 42)
+		assert.Error(t, pc.Validate())
+	})
+
+	t.Run("nonsense ledgerbounds", func(t *testing.T) {
+		pc := NewPreconditionsWithTimebounds(27, 42)
+		pc.Ledgerbounds = &Ledgerbounds{MinLedger: 42, MaxLedger: 1}
 		assert.Error(t, pc.Validate())
 	})
 }
