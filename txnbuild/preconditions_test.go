@@ -16,7 +16,7 @@ var Signers = []xdr.SignerKey{
 // TestClassifyingPreconditions ensures that Preconditions will correctly
 // differentiate V1 (timebounds-only) or V2 (all other) preconditions correctly.
 func TestClassifyingPreconditions(t *testing.T) {
-	tbpc := NewPreconditionsWithTimebounds(1, 2)
+	tbpc := Preconditions{Timebounds: NewTimebounds(1, 2)}
 	assert.False(t, (&Preconditions{}).hasV2Conditions())
 	assert.False(t, tbpc.hasV2Conditions())
 
@@ -78,7 +78,7 @@ func TestPreconditions(t *testing.T) {
 						MinTime: xdr.TimePoint(1),
 						MaxTime: xdr.TimePoint(2),
 					},
-				}, NewPreconditionsWithTimebounds(1, 2)
+				}, Preconditions{Timebounds: NewTimebounds(1, 2)}
 			},
 		},
 		{
@@ -146,7 +146,7 @@ func TestPreconditionsValidation(t *testing.T) {
 	})
 
 	t.Run("nonsense ledgerbounds", func(t *testing.T) {
-		pc := NewPreconditionsWithTimebounds(27, 42)
+		pc := Preconditions{Timebounds: NewTimebounds(27, 42)}
 		pc.Ledgerbounds = &Ledgerbounds{MinLedger: 42, MaxLedger: 1}
 		assert.Error(t, pc.Validate())
 	})
@@ -171,7 +171,7 @@ func cloneXdrPreconditions(pc xdr.Preconditions) xdr.Preconditions {
 }
 
 func clonePreconditions(precond Preconditions) Preconditions {
-	cond := NewPreconditions(precond.Timebounds)
+	cond := Preconditions{Timebounds: precond.Timebounds}
 	if precond.Ledgerbounds != nil {
 		cond.Ledgerbounds = &Ledgerbounds{
 			MinLedger: precond.Ledgerbounds.MinLedger,

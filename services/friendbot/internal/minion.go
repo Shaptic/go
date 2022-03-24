@@ -117,7 +117,7 @@ func (minion *Minion) makeTx(destAddress string) (string, error) {
 			IncrementSequenceNum: true,
 			Operations:           []txnbuild.Operation{&createAccountOp},
 			BaseFee:              minion.BaseFee,
-			Preconditions:        txnbuild.NewPreconditions(txnbuild.NewInfiniteTimeout()),
+			Preconditions:        txnbuild.Preconditions{Timebounds: txnbuild.NewInfiniteTimeout()},
 		},
 	)
 	if err != nil {

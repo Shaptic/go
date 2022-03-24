@@ -28,16 +28,6 @@ type Preconditions struct {
 	ExtraSigners []xdr.SignerKey
 }
 
-// NewPreconditions creates a set of preconditions with timebounds enabled
-func NewPreconditions(timebounds Timebounds) Preconditions {
-	cond := Preconditions{Timebounds: timebounds}
-	return cond
-}
-
-func NewPreconditionsWithTimebounds(minTime, maxTime int64) Preconditions {
-	return NewPreconditions(NewTimebounds(minTime, maxTime))
-}
-
 // Validate ensures that all enabled preconditions are valid.
 func (cond *Preconditions) Validate() error {
 	var err error

@@ -772,9 +772,15 @@ func transactionFromParsedXDR(xdrEnv xdr.TransactionEnvelope) (*GenericTransacti
 		memo:       nil,
 	}
 
+	// precond := xdrEnv.Preconditions()
+	// if precond.TimeBounds
+
 	if timeBounds := xdrEnv.TimeBounds(); timeBounds != nil {
-		newTx.simple.preconditions = NewPreconditionsWithTimebounds(
-			int64(timeBounds.MinTime), int64(timeBounds.MaxTime))
+		newTx.simple.preconditions = Preconditions{
+			Timebounds: NewTimebounds(
+				int64(timeBounds.MinTime),
+				int64(timeBounds.MaxTime)),
+		}
 	}
 
 	newTx.simple.memo, err = memoFromXDR(xdrEnv.Memo())
@@ -913,7 +919,7 @@ func convertToV1(tx *Transaction) (*Transaction, error) {
 		Operations:           tx.Operations(),
 		BaseFee:              tx.BaseFee(),
 		Memo:                 tx.Memo(),
-		Preconditions:        NewPreconditions(tx.Timebounds()),
+		Preconditions:        Preconditions{Timebounds: tx.Timebounds()},
 	})
 	if err != nil {
 		return tx, err
@@ -1049,9 +1055,11 @@ func BuildChallengeTx(serverSignerSecret, clientAccountID, webAuthDomain, homeDo
 					Value:         []byte(webAuthDomain),
 				},
 			},
-			BaseFee:       MinBaseFee,
-			Memo:          nil,
-			Preconditions: NewPreconditions(NewTimebounds(currentTime.Unix(), maxTime.Unix())),
+			BaseFee: MinBaseFee,
+			Memo:    nil,
+			Preconditions: Preconditions{
+				Timebounds: NewTimebounds(currentTime.Unix(), maxTime.Unix()),
+			},
 		},
 	)
 	if err != nil {
