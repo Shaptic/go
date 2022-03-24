@@ -13,10 +13,24 @@ var Signers = []xdr.SignerKey{
 	xdr.MustSigner("PA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJUAAAAAQACAQDAQCQMBYIBEFAWDANBYHRAEISCMKBKFQXDAMRUGY4DUPB6IBZGM"),
 }
 
-var (
-	seqNum    = int64(14)
-	xdrSeqNum = xdr.SequenceNumber(seqNum)
-	xdrCond   = xdr.Preconditions{
+// TestClassifyingPreconditions ensures that Preconditions will correctly
+// differentiate V1 (timebounds-only) or V2 (all other) preconditions correctly.
+func TestClassifyingPreconditions(t *testing.T) {
+	tb := NewTimebounds(1, 2)
+	tbpc := NewPreconditions(&tb)
+	assert.False(t, (&Preconditions{}).HasV2Conditions())
+	assert.False(t, tbpc.HasV2Conditions())
+
+	tbpc.MinSequenceNumberLedgerGap = 2
+	assert.True(t, tbpc.HasV2Conditions())
+}
+
+// TestPreconditions ensures correct XDR is generated for a (non-exhaustive)
+// handful of precondition combinations.
+func TestPreconditions(t *testing.T) {
+	seqNum := int64(14)
+	xdrSeqNum := xdr.SequenceNumber(seqNum)
+	xdrCond := xdr.Preconditions{
 		Type: xdr.PreconditionTypePrecondV2,
 		V2: &xdr.PreconditionsV2{
 			TimeBounds: &xdr.TimeBounds{
@@ -33,8 +47,8 @@ var (
 			ExtraSigners:    Signers[:1],
 		},
 	}
-	tb = NewTimebounds(27, 42)
-	pc = Preconditions{
+	tb := NewTimebounds(27, 42)
+	pc := Preconditions{
 		timebounds:                 &tb,
 		Ledgerbounds:               &Ledgerbounds{27, 42},
 		MinSequenceNumber:          &seqNum,
@@ -42,20 +56,11 @@ var (
 		MinSequenceNumberLedgerGap: 42,
 		ExtraSigners:               Signers[:1],
 	}
-)
 
-// TestClassifyingPreconditions ensures that Preconditions will correctly
-// differentiate V1 (timebounds-only) or V2 (all other) preconditions correctly.
-func TestClassifyingPreconditions(t *testing.T) {
-	tbpc := NewPreconditions(&tb)
-	assert.False(t, (&Preconditions{}).HasV2Conditions())
-	assert.False(t, tbpc.HasV2Conditions())
-	assert.True(t, pc.HasV2Conditions())
-}
+	// Note the pre-test invariant: xdrCond and pc match in structure. Each
+	// subtest clones these two structures, makes modifications, then ensures
+	// building the Preconditions version matches the XDR version.
 
-// TestPreconditions ensures correct XDR is generated for a (non-exhaustive)
-// handful of precondition combinations.
-func TestPreconditions(t *testing.T) {
 	preconditionModifiers := []struct {
 		Name     string
 		Modifier func() (xdr.Preconditions, Preconditions)
@@ -109,14 +114,15 @@ func TestPreconditions(t *testing.T) {
 	}
 	for _, testCase := range preconditionModifiers {
 		t.Run(testCase.Name, func(t *testing.T) {
-			xdrCond, precond := testCase.Modifier()
+			xdrPrecond, precond := testCase.Modifier()
 			assert.NoError(t, precond.Validate())
 
-			expectedBytes, err := xdrCond.MarshalBinary()
+			expectedBytes, err := xdrPrecond.MarshalBinary()
 			assert.NoError(t, err)
 
 			actualBytes, err := precond.BuildXDR().MarshalBinary()
 			assert.NoError(t, err)
+
 			assert.Equal(t, expectedBytes, actualBytes)
 		})
 	}
@@ -124,6 +130,9 @@ func TestPreconditions(t *testing.T) {
 
 // TestPreconditionsValidation ensures that validation fails when necessary.
 func TestPreconditionsValidation(t *testing.T) {
+	pc := NewPreconditionsWithTimebounds(27, 42)
+	pc.ExtraSigners = Signers
+
 	t.Run("too many signers", func(t *testing.T) {
 		pc.ExtraSigners = Signers
 		assert.Error(t, pc.Validate())
