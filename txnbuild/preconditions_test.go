@@ -121,6 +121,15 @@ func TestPreconditions(t *testing.T) {
 			assert.NoError(t, err)
 
 			assert.Equal(t, expectedBytes, actualBytes)
+
+			actualXdr := xdr.Preconditions{}
+			err = actualXdr.UnmarshalBinary(actualBytes)
+			assert.NoError(t, err)
+			assert.Equal(t, xdrPrecond, actualXdr)
+
+			roundTripPrecond := Preconditions{}
+			roundTripPrecond.FromXDR(actualXdr)
+			assert.Equal(t, precond, roundTripPrecond)
 		})
 	}
 }

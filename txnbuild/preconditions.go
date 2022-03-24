@@ -109,6 +109,53 @@ func (cond *Preconditions) BuildXDR() xdr.Preconditions {
 	return xdrCond
 }
 
+// FromXDR fills in the precondition structure from an xdr.Precondition.
+func (cond *Preconditions) FromXDR(precondXdr xdr.Preconditions) {
+	*cond = Preconditions{} // reset existing values
+
+	switch precondXdr.Type {
+	case xdr.PreconditionTypePrecondTime:
+		cond.Timebounds = NewTimebounds(
+			int64(precondXdr.TimeBounds.MinTime),
+			int64(precondXdr.TimeBounds.MaxTime),
+		)
+
+	case xdr.PreconditionTypePrecondV2:
+		inner := precondXdr.V2
+
+		if inner.TimeBounds != nil {
+			cond.Timebounds = NewTimebounds(
+				int64(inner.TimeBounds.MinTime),
+				int64(inner.TimeBounds.MaxTime),
+			)
+		}
+
+		if inner.LedgerBounds != nil {
+			cond.Ledgerbounds = &Ledgerbounds{
+				MinLedger: uint32(inner.LedgerBounds.MinLedger),
+				MaxLedger: uint32(inner.LedgerBounds.MaxLedger),
+			}
+		}
+
+		if inner.MinSeqNum != nil {
+			minSeqNum := int64(*inner.MinSeqNum)
+			cond.MinSequenceNumber = &minSeqNum
+		}
+
+		cond.MinSequenceNumberAge = inner.MinSeqAge
+		cond.MinSequenceNumberLedgerGap = uint32(inner.MinSeqLedgerGap)
+
+		if len(inner.ExtraSigners) > 0 {
+			cond.ExtraSigners = make([]xdr.SignerKey, len(inner.ExtraSigners))
+			copy(cond.ExtraSigners[:], inner.ExtraSigners)
+		}
+
+	case xdr.PreconditionTypePrecondNone:
+	default:
+		// panic?
+	}
+}
+
 // hasV2Conditions determines whether or not this has conditions on top of
 // the (required) timebound precondition.
 func (cond *Preconditions) hasV2Conditions() bool {
