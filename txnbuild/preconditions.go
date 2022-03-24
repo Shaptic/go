@@ -63,7 +63,7 @@ func (cond *Preconditions) BuildXDR() xdr.Preconditions {
 			TimeBounds:      &xdrTimeBounds,
 			MinSeqAge:       cond.MinSequenceNumberAge,
 			MinSeqLedgerGap: xdr.Uint32(cond.MinSequenceNumberLedgerGap),
-			ExtraSigners:    cond.ExtraSigners,
+			ExtraSigners:    cond.ExtraSigners, // should we copy?
 		}
 
 		// micro-optimization: if the ledgerbounds will always succeed, omit them
@@ -125,11 +125,7 @@ func (cond *Preconditions) FromXDR(precondXdr xdr.Preconditions) {
 
 		cond.MinSequenceNumberAge = inner.MinSeqAge
 		cond.MinSequenceNumberLedgerGap = uint32(inner.MinSeqLedgerGap)
-
-		if len(inner.ExtraSigners) > 0 {
-			cond.ExtraSigners = make([]xdr.SignerKey, len(inner.ExtraSigners))
-			copy(cond.ExtraSigners[:], inner.ExtraSigners)
-		}
+		cond.ExtraSigners = append(cond.ExtraSigners, inner.ExtraSigners...)
 
 	case xdr.PreconditionTypePrecondNone:
 	default: // panic?
