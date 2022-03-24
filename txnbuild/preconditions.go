@@ -7,9 +7,7 @@ import (
 
 // Preconditions is a container for all transaction preconditions.
 type Preconditions struct {
-	// Transaction is only valid during a certain time range. This is private
-	// because it should mirror the one set via TransactionParams, and this
-	// association should be done via `NewPreconditions()`.
+	// Transaction is only valid during a certain time range.
 	Timebounds Timebounds
 	// Transaction is valid for ledger numbers n such that minLedger <= n <
 	// maxLedger (if maxLedger == 0, then only minLedger is checked)
@@ -48,15 +46,12 @@ func (cond *Preconditions) Validate() error {
 		return err
 	}
 
-	if len(cond.ExtraSigners) > 2 {
-		return errors.New("only 2 extra signers allowed")
+	if err = cond.Ledgerbounds.Validate(); err != nil {
+		return err
 	}
 
-	if cond.Ledgerbounds != nil {
-		err = cond.Ledgerbounds.Validate()
-		if err != nil {
-			return err
-		}
+	if len(cond.ExtraSigners) > 2 {
+		return errors.New("only 2 extra signers allowed")
 	}
 
 	return nil

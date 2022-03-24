@@ -137,7 +137,11 @@ func TestPreconditions(t *testing.T) {
 // TestPreconditionsValidation ensures that validation fails when necessary.
 func TestPreconditionsValidation(t *testing.T) {
 	t.Run("too many signers", func(t *testing.T) {
-		pc := NewPreconditionsWithTimebounds(27, 42)
+		pc := Preconditions{
+			Timebounds:   NewTimebounds(27, 42),
+			ExtraSigners: Signers,
+		}
+
 		assert.Error(t, pc.Validate())
 	})
 

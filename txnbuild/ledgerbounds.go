@@ -11,6 +11,10 @@ type Ledgerbounds struct {
 }
 
 func (lb *Ledgerbounds) Validate() error {
+	if lb == nil {
+		return nil
+	}
+
 	if lb.MaxLedger > 0 && lb.MaxLedger < lb.MinLedger {
 		return errors.New("invalid ledgerbound: max ledger < min ledger")
 	}
