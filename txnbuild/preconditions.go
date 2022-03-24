@@ -10,7 +10,7 @@ type Preconditions struct {
 	// Transaction is only valid during a certain time range. This is private
 	// because it should mirror the one set via TransactionParams, and this
 	// association should be done via `NewPreconditions()`.
-	timebounds *Timebounds
+	Timebounds Timebounds
 	// Transaction is valid for ledger numbers n such that minLedger <= n <
 	// maxLedger (if maxLedger == 0, then only minLedger is checked)
 	Ledgerbounds *Ledgerbounds
@@ -31,52 +31,20 @@ type Preconditions struct {
 }
 
 // NewPreconditions creates a set of preconditions with timebounds enabled
-func NewPreconditions(timebounds *Timebounds) Preconditions {
-	cond := Preconditions{}
-	if err := cond.SetTimebounds(timebounds); err != nil {
-		panic(err)
-	}
+func NewPreconditions(timebounds Timebounds) Preconditions {
+	cond := Preconditions{Timebounds: timebounds}
 	return cond
 }
 
 func NewPreconditionsWithTimebounds(minTime, maxTime int64) Preconditions {
-	tb := NewTimebounds(minTime, maxTime)
-	return NewPreconditions(&tb)
-}
-
-// SetTimebounds enables the timebound precondition. Note that timebounds are a
-// *required* precondition, but they're passed here by pointer in order to align
-// with `TransactionParams.Timebounds`.
-func (cond *Preconditions) SetTimebounds(timebounds *Timebounds) error {
-	if timebounds == nil {
-		return errors.New("timebounds are required")
-	}
-
-	if err := timebounds.Validate(); err != nil {
-		return err
-	}
-
-	if cond.timebounds != nil {
-		// only fail if they differ
-		if cond.timebounds.MinTime != timebounds.MinTime ||
-			cond.timebounds.MaxTime != timebounds.MaxTime {
-			return errors.New("timebounds set twice")
-		}
-	}
-
-	cond.timebounds = timebounds
-	return nil
-}
-
-func (cond *Preconditions) Timebounds() Timebounds {
-	return *cond.timebounds
+	return NewPreconditions(NewTimebounds(minTime, maxTime))
 }
 
 // Validate ensures that all enabled preconditions are valid.
 func (cond *Preconditions) Validate() error {
 	var err error
 
-	if err = cond.timebounds.Validate(); err != nil {
+	if err = cond.Timebounds.Validate(); err != nil {
 		return err
 	}
 
@@ -98,28 +66,18 @@ func (cond *Preconditions) ValidateSigners() bool {
 	return len(cond.ExtraSigners) <= 2
 }
 
-// HasV2Conditions determines whether or not this has conditions on top of
-// the (required) timebound precondition.
-func (cond *Preconditions) HasV2Conditions() bool {
-	return (cond.Ledgerbounds != nil ||
-		cond.MinSequenceNumber != nil ||
-		cond.MinSequenceNumberAge > xdr.Duration(0) ||
-		cond.MinSequenceNumberLedgerGap > 0 ||
-		len(cond.ExtraSigners) > 0)
-}
-
 // BuildXDR will create a precondition structure that varies depending on
 // whether or not there are additional preconditions besides timebounds (which
 // are required).
 func (cond *Preconditions) BuildXDR() xdr.Preconditions {
 	xdrCond := xdr.Preconditions{}
 	xdrTimeBounds := xdr.TimeBounds{
-		MinTime: xdr.TimePoint(cond.timebounds.MinTime),
-		MaxTime: xdr.TimePoint(cond.timebounds.MaxTime),
+		MinTime: xdr.TimePoint(cond.Timebounds.MinTime),
+		MaxTime: xdr.TimePoint(cond.Timebounds.MaxTime),
 	}
 
 	// Only build PRECOND_V2 structure if we need to
-	if cond.HasV2Conditions() {
+	if cond.hasV2Conditions() {
 		xdrPrecond := xdr.PreconditionsV2{
 			TimeBounds:      &xdrTimeBounds,
 			MinSeqAge:       cond.MinSequenceNumberAge,
@@ -149,4 +107,14 @@ func (cond *Preconditions) BuildXDR() xdr.Preconditions {
 	}
 
 	return xdrCond
+}
+
+// hasV2Conditions determines whether or not this has conditions on top of
+// the (required) timebound precondition.
+func (cond *Preconditions) hasV2Conditions() bool {
+	return (cond.Ledgerbounds != nil ||
+		cond.MinSequenceNumber != nil ||
+		cond.MinSequenceNumberAge > xdr.Duration(0) ||
+		cond.MinSequenceNumberLedgerGap > 0 ||
+		len(cond.ExtraSigners) > 0)
 }

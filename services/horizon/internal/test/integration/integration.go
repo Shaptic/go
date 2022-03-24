@@ -694,7 +694,7 @@ func (i *Test) CreateSignedTransaction(
 		SourceAccount:        source,
 		Operations:           ops,
 		BaseFee:              txnbuild.MinBaseFee,
-		Timebounds:           txnbuild.NewInfiniteTimeout(),
+		Preconditions:        txnbuild.NewPreconditions(txnbuild.NewInfiniteTimeout()),
 		IncrementSequenceNum: true,
 	}
 

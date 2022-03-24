@@ -242,7 +242,7 @@ func (t *Transaction) Memo() Memo {
 
 // Timebounds returns the Timebounds configured for this transaction.
 func (t *Transaction) Timebounds() Timebounds {
-	return t.preconditions.Timebounds()
+	return t.preconditions.Timebounds
 }
 
 // Operations returns the list of operations included in this transaction.
@@ -797,13 +797,12 @@ func transactionFromParsedXDR(xdrEnv xdr.TransactionEnvelope) (*GenericTransacti
 // TransactionParams is a container for parameters which are used to construct
 // new Transaction instances
 type TransactionParams struct {
-	SourceAccount           Account
-	IncrementSequenceNum    bool
-	Operations              []Operation
-	BaseFee                 int64
-	Memo                    Memo
-	Timebounds              Timebounds
-	AdditionalPreconditions Preconditions
+	SourceAccount        Account
+	IncrementSequenceNum bool
+	Operations           []Operation
+	BaseFee              int64
+	Memo                 Memo
+	Preconditions        Preconditions
 }
 
 // NewTransaction returns a new Transaction instance
@@ -823,17 +822,6 @@ func NewTransaction(params TransactionParams) (*Transaction, error) {
 		return nil, errors.Wrap(err, "could not obtain account sequence")
 	}
 
-	// Because both V1 and V2 preconditions allow timebounds, and we don't want
-	// to introduce a breaking change by dropping
-	// `TransactionParams.Timebounds`, nor require users to set up the
-	// `AdditionalPreconditions`, we need to coalesce the two values here.
-	if params.Timebounds != (Timebounds{}) {
-		err = params.AdditionalPreconditions.SetTimebounds(&params.Timebounds)
-		if err != nil {
-			return nil, errors.Wrap(err, "invalid timebounds")
-		}
-	}
-
 	tx := &Transaction{
 		baseFee: params.BaseFee,
 		sourceAccount: SimpleAccount{
@@ -842,7 +830,7 @@ func NewTransaction(params TransactionParams) (*Transaction, error) {
 		},
 		operations:    params.Operations,
 		memo:          params.Memo,
-		preconditions: params.AdditionalPreconditions,
+		preconditions: params.Preconditions,
 	}
 	var sourceAccount xdr.MuxedAccount
 	if err = sourceAccount.SetAddress(tx.sourceAccount.AccountID); err != nil {
@@ -924,7 +912,7 @@ func convertToV1(tx *Transaction) (*Transaction, error) {
 		Operations:           tx.Operations(),
 		BaseFee:              tx.BaseFee(),
 		Memo:                 tx.Memo(),
-		Timebounds:           tx.Timebounds(),
+		Preconditions:        NewPreconditions(tx.Timebounds()),
 	})
 	if err != nil {
 		return tx, err
@@ -1060,9 +1048,9 @@ func BuildChallengeTx(serverSignerSecret, clientAccountID, webAuthDomain, homeDo
 					Value:         []byte(webAuthDomain),
 				},
 			},
-			BaseFee:    MinBaseFee,
-			Memo:       nil,
-			Timebounds: NewTimebounds(currentTime.Unix(), maxTime.Unix()),
+			BaseFee:       MinBaseFee,
+			Memo:          nil,
+			Preconditions: NewPreconditions(NewTimebounds(currentTime.Unix(), maxTime.Unix())),
 		},
 	)
 	if err != nil {
