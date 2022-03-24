@@ -97,12 +97,12 @@ func (cond *Preconditions) FromXDR(precondXdr xdr.Preconditions) {
 	switch precondXdr.Type {
 	case xdr.PreconditionTypePrecondTime:
 		cond.Timebounds = NewTimebounds(
-			int64(precondXdr.TimeBounds.MinTime),
-			int64(precondXdr.TimeBounds.MaxTime),
+			int64(precondXdr.MustTimeBounds().MinTime),
+			int64(precondXdr.MustTimeBounds().MaxTime),
 		)
 
 	case xdr.PreconditionTypePrecondV2:
-		inner := precondXdr.V2
+		inner := precondXdr.MustV2()
 
 		if inner.TimeBounds != nil {
 			cond.Timebounds = NewTimebounds(
@@ -132,8 +132,7 @@ func (cond *Preconditions) FromXDR(precondXdr xdr.Preconditions) {
 		}
 
 	case xdr.PreconditionTypePrecondNone:
-	default:
-		// panic?
+	default: // panic?
 	}
 }
 

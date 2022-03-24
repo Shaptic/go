@@ -772,17 +772,7 @@ func transactionFromParsedXDR(xdrEnv xdr.TransactionEnvelope) (*GenericTransacti
 		memo:       nil,
 	}
 
-	// precond := xdrEnv.Preconditions()
-	// if precond.TimeBounds
-
-	if timeBounds := xdrEnv.TimeBounds(); timeBounds != nil {
-		newTx.simple.preconditions = Preconditions{
-			Timebounds: NewTimebounds(
-				int64(timeBounds.MinTime),
-				int64(timeBounds.MaxTime)),
-		}
-	}
-
+	newTx.simple.preconditions.FromXDR(xdrEnv.Preconditions())
 	newTx.simple.memo, err = memoFromXDR(xdrEnv.Memo())
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to parse memo")

@@ -120,15 +120,17 @@ func TestPreconditions(t *testing.T) {
 			actualBytes, err := precond.BuildXDR().MarshalBinary()
 			assert.NoError(t, err)
 
+			// building the struct should result in identical XDR!
 			assert.Equal(t, expectedBytes, actualBytes)
 
-			actualXdr := xdr.Preconditions{}
-			err = actualXdr.UnmarshalBinary(actualBytes)
+			// unpacking the XDR should result in identical structs!
+			roundTripXdr := xdr.Preconditions{}
+			err = roundTripXdr.UnmarshalBinary(actualBytes)
 			assert.NoError(t, err)
-			assert.Equal(t, xdrPrecond, actualXdr)
+			assert.Equal(t, xdrPrecond, roundTripXdr)
 
 			roundTripPrecond := Preconditions{}
-			roundTripPrecond.FromXDR(actualXdr)
+			roundTripPrecond.FromXDR(roundTripXdr)
 			assert.Equal(t, precond, roundTripPrecond)
 		})
 	}

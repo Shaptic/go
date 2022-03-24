@@ -50,24 +50,35 @@ func TestTimebounds(t *testing.T) {
 func TestV2Preconditions(t *testing.T) {
 	kp0 := newKeypair0()
 
-	cond := Preconditions{Timebounds: NewTimeout(300)}
-	cond.Ledgerbounds = &Ledgerbounds{0, 1}
-	cond.MinSequenceNumber = nil
-	cond.MinSequenceNumberAge = xdr.Duration(10)
-	cond.MinSequenceNumberLedgerGap = 2
+	cond := Preconditions{
+		Timebounds:                 NewTimeout(300),
+		Ledgerbounds:               &Ledgerbounds{0, 1},
+		MinSequenceNumber:          nil,
+		MinSequenceNumberAge:       xdr.Duration(10),
+		MinSequenceNumberLedgerGap: 2,
+	}
 	assert.True(t, cond.hasV2Conditions())
 
 	tp := TransactionParams{
 		SourceAccount: &SimpleAccount{AccountID: kp0.Address(), Sequence: 1},
 		Operations:    []Operation{&BumpSequence{BumpTo: 0}},
 		BaseFee:       MinBaseFee,
-
 		Preconditions: cond,
 	}
 
 	tx, err := NewTransaction(tp)
 	assert.NoError(t, err)
 	assert.Equal(t, cond, tx.preconditions)
+
+	b64, err := tx.Base64()
+	assert.NoError(t, err)
+
+	unpackedTx, err := TransactionFromXDR(b64)
+	assert.NoError(t, err)
+	if !assert.NotNil(t, unpackedTx.simple) {
+		t.FailNow()
+	}
+	assert.Equal(t, cond, unpackedTx.simple.preconditions)
 }
 
 func TestMissingSourceAccount(t *testing.T) {
