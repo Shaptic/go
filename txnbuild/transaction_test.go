@@ -52,7 +52,7 @@ func TestV2Preconditions(t *testing.T) {
 
 	cond := Preconditions{
 		Timebounds:                 NewTimeout(300),
-		Ledgerbounds:               &Ledgerbounds{0, 1},
+		Ledgerbounds:               &LedgerBounds{0, 1},
 		MinSequenceNumber:          nil,
 		MinSequenceNumberAge:       xdr.Duration(10),
 		MinSequenceNumberLedgerGap: 2,

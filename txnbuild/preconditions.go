@@ -11,7 +11,7 @@ type Preconditions struct {
 	Timebounds TimeBounds
 	// Transaction is valid for ledger numbers n such that minLedger <= n <
 	// maxLedger (if maxLedger == 0, then only minLedger is checked)
-	Ledgerbounds *Ledgerbounds
+	Ledgerbounds *LedgerBounds
 	// If nil, the transaction is only valid when sourceAccount's sequence
 	// number "N" is seqNum - 1. Otherwise, valid when N satisfies minSeqNum <=
 	// N < tx.seqNum.
@@ -112,7 +112,7 @@ func (cond *Preconditions) FromXDR(precondXdr xdr.Preconditions) {
 		}
 
 		if inner.LedgerBounds != nil {
-			cond.Ledgerbounds = &Ledgerbounds{
+			cond.Ledgerbounds = &LedgerBounds{
 				MinLedger: uint32(inner.LedgerBounds.MinLedger),
 				MaxLedger: uint32(inner.LedgerBounds.MaxLedger),
 			}

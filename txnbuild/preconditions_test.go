@@ -37,7 +37,7 @@ func TestPreconditionValidation(t *testing.T) {
 
 	t.Run("nonsense ledgerbounds", func(t *testing.T) {
 		pc := Preconditions{Timebounds: NewTimebounds(27, 42)}
-		pc.Ledgerbounds = &Ledgerbounds{MinLedger: 42, MaxLedger: 1}
+		pc.Ledgerbounds = &LedgerBounds{MinLedger: 42, MaxLedger: 1}
 		assert.Error(t, pc.Validate())
 	})
 }
@@ -157,7 +157,7 @@ func createPreconditionFixtures() (xdr.Preconditions, Preconditions) {
 	}
 	pc := Preconditions{
 		Timebounds:                 NewTimebounds(27, 42),
-		Ledgerbounds:               &Ledgerbounds{27, 42},
+		Ledgerbounds:               &LedgerBounds{27, 42},
 		MinSequenceNumber:          &seqNum,
 		MinSequenceNumberAge:       xdr.Duration(27),
 		MinSequenceNumberLedgerGap: 42,
