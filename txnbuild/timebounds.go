@@ -24,7 +24,7 @@ type TimeBounds struct {
 	wasBuilt bool
 }
 
-// type Timebounds = TimeBounds
+type Timebounds = TimeBounds
 
 // Validate for TimeBounds sanity-checks the configured Timebound limits, and confirms the object was built
 // using a factory method. This is done to ensure that default Timebound structs (which have no limits) are not
