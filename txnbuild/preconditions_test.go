@@ -16,8 +16,7 @@ var Signers = []xdr.SignerKey{
 // TestClassifyingPreconditions ensures that Preconditions will correctly
 // differentiate V1 (timebounds-only) or V2 (all other) preconditions correctly.
 func TestClassifyingPreconditions(t *testing.T) {
-	tb := NewTimebounds(1, 2)
-	tbpc := NewPreconditions(&tb)
+	tbpc := NewPreconditionsWithTimebounds(1, 2)
 	assert.False(t, (&Preconditions{}).HasV2Conditions())
 	assert.False(t, tbpc.HasV2Conditions())
 
@@ -47,9 +46,8 @@ func TestPreconditions(t *testing.T) {
 			ExtraSigners:    Signers[:1],
 		},
 	}
-	tb := NewTimebounds(27, 42)
 	pc := Preconditions{
-		timebounds:                 &tb,
+		timebounds:                 NewTimebounds(27, 42),
 		Ledgerbounds:               &Ledgerbounds{27, 42},
 		MinSequenceNumber:          &seqNum,
 		MinSequenceNumberAge:       xdr.Duration(27),
@@ -74,14 +72,13 @@ func TestPreconditions(t *testing.T) {
 		{
 			"only timebounds",
 			func() (xdr.Preconditions, Preconditions) {
-				tb := NewTimebounds(1, 2)
 				return xdr.Preconditions{
 					Type: xdr.PreconditionTypePrecondTime,
 					TimeBounds: &xdr.TimeBounds{
 						MinTime: xdr.TimePoint(1),
 						MaxTime: xdr.TimePoint(2),
 					},
-				}, NewPreconditions(&tb)
+				}, NewPreconditionsWithTimebounds(1, 2)
 			},
 		},
 		{
@@ -158,8 +155,10 @@ func cloneXdrPreconditions(pc xdr.Preconditions) xdr.Preconditions {
 }
 
 func clonePreconditions(precond Preconditions) Preconditions {
-	tb := NewTimebounds(precond.timebounds.MinTime, precond.timebounds.MaxTime)
-	cond := NewPreconditions(&tb)
+	cond := NewPreconditionsWithTimebounds(
+		precond.timebounds.MinTime,
+		precond.timebounds.MaxTime,
+	)
 	if precond.Ledgerbounds != nil {
 		cond.Ledgerbounds = &Ledgerbounds{
 			MinLedger: precond.Ledgerbounds.MinLedger,

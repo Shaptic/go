@@ -797,13 +797,13 @@ func transactionFromParsedXDR(xdrEnv xdr.TransactionEnvelope) (*GenericTransacti
 // TransactionParams is a container for parameters which are used to construct
 // new Transaction instances
 type TransactionParams struct {
-	SourceAccount           Account
-	IncrementSequenceNum    bool
-	Operations              []Operation
-	BaseFee                 int64
-	Memo                    Memo
-	Timebounds              Timebounds
-	AdditionalPreconditions Preconditions
+	SourceAccount        Account
+	IncrementSequenceNum bool
+	Operations           []Operation
+	BaseFee              int64
+	Memo                 Memo
+	Timebounds           Timebounds
+	Preconditions        Preconditions
 }
 
 // NewTransaction returns a new Transaction instance
@@ -826,12 +826,19 @@ func NewTransaction(params TransactionParams) (*Transaction, error) {
 	// Because both V1 and V2 preconditions allow timebounds, and we don't want
 	// to introduce a breaking change by dropping
 	// `TransactionParams.Timebounds`, nor require users to set up the
-	// `AdditionalPreconditions`, we need to coalesce the two values here.
+	// `Preconditions`, we need to coalesce the two values here.
+	//
+	// Basically: always set timebounds within Preconditions, and if both are
+	// set, bail out.
+	if params.Timebounds != (Timebounds{}) &&
+		params.Preconditions.Timebounds() != (Timebounds{}) {
+		return nil, errors.New(
+			"timebounds set twice: only set TransactionParams.Timebounds " +
+				"*xor* the timebounds in TransactionParams.Preconditions")
+	}
+
 	if params.Timebounds != (Timebounds{}) {
-		err = params.AdditionalPreconditions.SetTimebounds(&params.Timebounds)
-		if err != nil {
-			return nil, errors.Wrap(err, "invalid timebounds")
-		}
+		params.Preconditions.timebounds = params.Timebounds
 	}
 
 	tx := &Transaction{
@@ -842,7 +849,7 @@ func NewTransaction(params TransactionParams) (*Transaction, error) {
 		},
 		operations:    params.Operations,
 		memo:          params.Memo,
-		preconditions: params.AdditionalPreconditions,
+		preconditions: params.Preconditions,
 	}
 	var sourceAccount xdr.MuxedAccount
 	if err = sourceAccount.SetAddress(tx.sourceAccount.AccountID); err != nil {

@@ -49,9 +49,9 @@ func TestTimebounds(t *testing.T) {
 
 	// Transactions with timebounds set and timebounds-only preconditions set
 	// should result in identical XDR.
-	cond := NewPreconditions(&tb)
+	cond := NewPreconditions(tb)
 	tp.Timebounds = Timebounds{}
-	tp.AdditionalPreconditions = cond
+	tp.Preconditions = cond
 	tx2, err := NewTransaction(tp)
 	assert.NoError(t, err)
 	assert.Equal(t, tb, tx.preconditions.Timebounds())
@@ -62,24 +62,17 @@ func TestTimebounds(t *testing.T) {
 	assert.NoError(t, err)
 	assert.EqualValues(t, b1, b2)
 
-	// Transactions built with both (and differing) ways to set a timebound
-	// precondition should fail...
-	tp.AdditionalPreconditions = cond
+	// Transactions built using both timebound methods should fail...
 	tp.Timebounds = NewTimebounds(1, 2)
+	tp.Preconditions = cond
 	_, err = NewTransaction(tp)
-	assert.EqualError(t, err, "invalid timebounds: timebounds set twice")
-
-	// ...but identical values should pass.
-	tp.Timebounds = *cond.timebounds
-	_, err = NewTransaction(tp)
-	assert.NoError(t, err)
+	assert.True(t, strings.Contains(err.Error(), "timebounds set twice"))
 }
 
 func TestV2Preconditions(t *testing.T) {
 	kp0 := newKeypair0()
-	tb := NewTimeout(300)
 
-	cond := NewPreconditions(&tb)
+	cond := NewPreconditions(NewTimeout(300))
 	cond.Ledgerbounds = &Ledgerbounds{0, 1}
 	cond.MinSequenceNumber = nil
 	cond.MinSequenceNumberAge = xdr.Duration(10)
@@ -90,8 +83,7 @@ func TestV2Preconditions(t *testing.T) {
 		SourceAccount: &SimpleAccount{AccountID: kp0.Address(), Sequence: 1},
 		Operations:    []Operation{&BumpSequence{BumpTo: 0}},
 		BaseFee:       MinBaseFee,
-
-		AdditionalPreconditions: cond,
+		Preconditions: cond,
 	}
 
 	tx, err := NewTransaction(tp)
