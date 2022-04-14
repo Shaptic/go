@@ -241,7 +241,7 @@ func formatDuration(d *xdr.Duration) null.Int {
 	}
 
 	if *d > math.MaxInt64 {
-		*d = xdr.Duration(math.MaxInt64)
+		return null.IntFrom(math.MaxInt64)
 	}
 
 	return null.IntFrom(int64(*d))
