@@ -25,7 +25,7 @@ import (
 const (
 	// MaxSupportedProtocolVersion defines the maximum supported version of
 	// the Stellar protocol.
-	MaxSupportedProtocolVersion uint32 = 18
+	MaxSupportedProtocolVersion uint32 = 19
 
 	// CurrentVersion reflects the latest version of the ingestion
 	// algorithm. This value is stored in KV store and is used to decide
@@ -74,6 +74,7 @@ type Config struct {
 	CaptiveCoreBinaryPath  string
 	CaptiveCoreStoragePath string
 	CaptiveCoreToml        *ledgerbackend.CaptiveCoreToml
+	CaptiveCoreConfigUseDB bool
 	RemoteCaptiveCoreURL   string
 	NetworkPassphrase      string
 
@@ -88,6 +89,8 @@ type Config struct {
 
 	// The checkpoint frequency will be 64 unless you are using an exotic test setup.
 	CheckpointFrequency uint32
+
+	RoundingSlippageFilter int
 }
 
 const (
@@ -224,6 +227,7 @@ func NewSystem(config Config) (System, error) {
 				ledgerbackend.CaptiveCoreConfig{
 					BinaryPath:          config.CaptiveCoreBinaryPath,
 					StoragePath:         config.CaptiveCoreStoragePath,
+					UseDB:               config.CaptiveCoreConfigUseDB,
 					Toml:                config.CaptiveCoreToml,
 					NetworkPassphrase:   config.NetworkPassphrase,
 					HistoryArchiveURLs:  []string{config.HistoryArchiveURL},

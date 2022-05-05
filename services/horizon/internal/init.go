@@ -2,6 +2,7 @@ package horizon
 
 import (
 	"context"
+	"github.com/stellar/go/services/horizon/internal/paths"
 	"net/http"
 	"runtime"
 
@@ -95,11 +96,13 @@ func initIngester(app *App) {
 		StellarCoreCursor:            app.config.CursorName,
 		CaptiveCoreBinaryPath:        app.config.CaptiveCoreBinaryPath,
 		CaptiveCoreStoragePath:       app.config.CaptiveCoreStoragePath,
+		CaptiveCoreConfigUseDB:       app.config.CaptiveCoreConfigUseDB,
 		CaptiveCoreToml:              app.config.CaptiveCoreToml,
 		RemoteCaptiveCoreURL:         app.config.RemoteCaptiveCoreURL,
 		EnableCaptiveCore:            app.config.EnableCaptiveCoreIngestion,
 		DisableStateVerification:     app.config.IngestDisableStateVerification,
 		EnableExtendedLogLedgerStats: app.config.IngestEnableExtendedLogLedgerStats,
+		RoundingSlippageFilter:       app.config.RoundingSlippageFilter,
 	})
 
 	if err != nil {
@@ -114,7 +117,11 @@ func initPathFinder(app *App) {
 		orderBookGraph,
 	)
 
-	app.paths = simplepath.NewInMemoryFinder(orderBookGraph, !app.config.DisablePoolPathFinding)
+	var finder paths.Finder = simplepath.NewInMemoryFinder(orderBookGraph, !app.config.DisablePoolPathFinding)
+	if app.config.MaxPathFindingRequests != 0 {
+		finder = paths.NewRateLimitedFinder(finder, app.config.MaxPathFindingRequests)
+	}
+	app.paths = finder
 }
 
 // initSentry initialized the default sentry client with the configured DSN
