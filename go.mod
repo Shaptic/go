@@ -9,6 +9,7 @@ require (
 	github.com/BurntSushi/toml v0.3.1
 	github.com/Masterminds/squirrel v1.5.0
 	github.com/Microsoft/go-winio v0.4.14
+	github.com/RoaringBitmap/roaring v0.9.4 // indirect
 	github.com/adjust/goautoneg v0.0.0-20150426214442-d788f35a0315
 	github.com/ajg/form v0.0.0-20160822230020-523a5da1a92f // indirect
 	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d
@@ -65,6 +66,7 @@ require (
 	github.com/stellar/throttled v2.2.3-0.20190823235211-89d75816f59d+incompatible
 	github.com/stretchr/objx v0.3.0 // indirect
 	github.com/stretchr/testify v1.7.0
+	github.com/tchap/go-patricia v2.3.0+incompatible // indirect
 	github.com/tyler-smith/go-bip39 v0.0.0-20180618194314-52158e4697b8
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v0.0.0-20170109085056-0a7f0a797cd6 // indirect

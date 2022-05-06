@@ -3,8 +3,10 @@ package index
 import (
 	"fmt"
 	"io"
+	"math/rand"
 	"testing"
 
+	"github.com/RoaringBitmap/roaring"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -191,32 +193,18 @@ func TestNextActive(t *testing.T) {
 	t.Run("many bytes", func(t *testing.T) {
 		index := &CheckpointIndex{}
 		index.SetActive(9)
+		index.SetActive(16)
 		index.SetActive(129)
 
-		// Before the first
-		i, err := index.NextActive(8)
-		assert.NoError(t, err)
-		assert.Equal(t, uint32(9), i)
+		asked := []uint32{8, 9, 11, 129, 130}
+		expected := []uint32{9, 9, 16, 129, 0}
+		errors := []error{nil, nil, nil, nil, io.EOF}
 
-		// at the first
-		i, err = index.NextActive(9)
-		assert.NoError(t, err)
-		assert.Equal(t, uint32(9), i)
-
-		// In the middle
-		i, err = index.NextActive(11)
-		assert.NoError(t, err)
-		assert.Equal(t, uint32(129), i)
-
-		// At the end
-		i, err = index.NextActive(129)
-		assert.NoError(t, err)
-		assert.Equal(t, uint32(129), i)
-
-		// after the end
-		i, err = index.NextActive(130)
-		assert.EqualError(t, err, io.EOF.Error())
-		assert.Equal(t, uint32(0), i)
+		for i, chk := range asked {
+			nextChk, err := index.NextActive(chk)
+			assert.Equal(t, err, errors[i])
+			assert.Equal(t, nextChk, expected[i])
+		}
 	})
 }
 
@@ -276,4 +264,186 @@ func TestMerge(t *testing.T) {
 	})
 
 	assert.Equal(t, []uint32{9, 129, 900, 1000}, checkpoints)
+}
+
+func BenchmarkBitmapInsertion(b *testing.B) {
+	checkpoints := makeCheckpointAccessPattern()
+	b.ResetTimer()
+
+	b.Run("Roaring", func(bb *testing.B) {
+		for trial := 0; trial < bb.N; trial++ {
+			bm := roaring.New()
+			for _, chk := range checkpoints {
+				bm.Add(chk)
+			}
+		}
+	})
+
+	b.Run("Custom", func(bb *testing.B) {
+		for trial := 0; trial < bb.N; trial++ {
+			bm := CheckpointIndex{}
+			for _, chk := range checkpoints {
+				bm.SetActive(chk)
+			}
+		}
+	})
+}
+func BenchmarkBitmapNextActive(b *testing.B) {
+	checkpoints := makeCheckpointAccessPattern()
+
+	roar := roaring.New()
+	paul := CheckpointIndex{}
+	for _, chk := range checkpoints {
+		roar.Add(chk)
+		paul.SetActive(chk)
+	}
+
+	checkpointsToCheck := make([]uint32, 1000)
+	for i, _ := range checkpointsToCheck {
+		checkpointsToCheck[i] = uint32(1 + rand.Int31n(MAX_CHECKPOINTS))
+	}
+
+	roarResults := make([]int, len(checkpointsToCheck))
+	paulResults := make([]int, len(checkpointsToCheck))
+
+	b.ResetTimer()
+
+	// The roaring bitmap doesn't have a "get next set bit" functionality, so we
+	// have to use the iterator thingie they provide.
+	b.Run("Roaring", func(bb *testing.B) {
+		for trial := 0; trial < bb.N; trial++ {
+			for i, chk := range checkpointsToCheck {
+				// iter := roar.Iterator()
+				// iter.AdvanceIfNeeded(chk)
+				// for iter.HasNext() {
+				// 	value := iter.Next()
+				// 	if value >= chk {
+				// 		roarResults[i] = int(value)
+				// 		break
+				// 	}
+				// }
+				roarResults[i] = int(getNextActive(roar, chk))
+			}
+		}
+	})
+
+	b.Run("Custom", func(bb *testing.B) {
+		for trial := 0; trial < bb.N; trial++ {
+			for i, chk := range checkpointsToCheck {
+				value, _ := paul.NextActive(chk)
+				paulResults[i] = int(value)
+			}
+		}
+	})
+
+	require.Equal(b, paulResults, roarResults)
+	// "checking %v from %v", checkpointsToCheck, checkpoints)
+}
+
+func TestRoaringNextActive(t *testing.T) {
+	chks := []uint32{3, 4, 10, 20, 30, 40}
+
+	bm := roaring.BitmapOf(chks...)
+	idx := &CheckpointIndex{}
+	for _, chk := range chks {
+		idx.SetActive(chk)
+	}
+
+	chk := []uint32{10, 11, 15, 19, 39, 40, 1, 50, 41, 31, 29}
+	nextChk := []uint32{10, 20, 20, 20, 40, 40, 3, 0, 0, 40, 30}
+
+	for i, chk := range chk {
+		assert.Equalf(t, nextChk[i], getNextActive(bm, chk), "checkpoint: %d", chk)
+		next, _ := idx.NextActive(chk)
+		assert.Equalf(t, nextChk[i], next, "checkpoint: %d", chk)
+	}
+}
+
+// getNextActive retrieves the next value stored in a bitmap after given value.
+// If there is no such value, it returns 0.
+func getNextActive(bm *roaring.Bitmap, needle uint32) uint32 {
+	if min := bm.Minimum(); min >= needle {
+		return min
+	} else if needle > bm.Maximum() {
+		return 0
+	} else if bm.Contains(needle) {
+		return needle
+	}
+
+	// We perform a fuzzy "nearest neighbor" binary search on the set of
+	// available values in the bitmap. By fuzzy, we mean that `needle` is not
+	// guaranteed to exist in the bitmap (in fact, it often won't), so we need
+	// its next-largest neighbor. This means we need to check neighboring value
+	// to see if they fit the "nearest" criteria.
+
+	// Note: GetCardinality returns a uint64 but if there are more than 2**32
+	// values in this bitmap idk what the heck is going on.
+	low, high := uint32(0), uint32(bm.GetCardinality())
+	for high > low {
+		mid := (high + low) / 2
+
+		value, err := bm.Select(mid)
+		if err != nil {
+			break
+		}
+
+		if value == needle {
+			return value
+		} else if value < needle {
+			// we can use this moment to check if the next value is larger than
+			// the needle
+			nextValue, err := bm.Select(mid + 1)
+			if err != nil {
+				break // no next value means we'll never find it
+			} else if nextValue >= needle {
+				return nextValue
+			}
+
+			low = mid + 1
+		} else { // implied: value > needle
+			// if the previous value is smaller, this is the next-largest value
+			prevValue, err := bm.Select(mid - 1)
+			if err != nil || prevValue < needle {
+				return value
+			}
+
+			high = mid - 1
+		}
+	}
+
+	return 0
+}
+
+// Pubnet currently has ~41mln ledgers, so we can use this as an upper bound for
+// benchmarking the size of a bitmap.
+const MAX_CHECKPOINTS = 41_000_000 / 64
+
+func makeCheckpointAccessPattern() []uint32 {
+	// We shouldn't pick *random* ledgers to be active in, because this would
+	// completely ruin the purpose of a bitmap. Something more reliable, then
+	// would be to pick a random *range* and then activate most ledgers within
+	// that range (but also at random).
+	//
+	// TODO: Actually follow my own advice above. ^
+
+	// We suppose with absolutely no knowledge a prior or justification that 40%
+	// "activity" within all checkpoints (and completely random checkpoints, at
+	// that) is a reasonable metric.
+	const ACTIVITY = int(MAX_CHECKPOINTS * 0.4)
+
+	checkpoints := make([]uint32, ACTIVITY)
+	for i, _ := range checkpoints {
+		checkpoints[i] = uint32(1 + rand.Int31n(MAX_CHECKPOINTS))
+	}
+
+	// We don't want repeats (for performance and also fear of bugs..):
+	keys := make(map[uint32]struct{})
+	list := []uint32{}
+	for _, entry := range checkpoints {
+		if _, value := keys[entry]; !value {
+			keys[entry] = struct{}{}
+			list = append(list, entry)
+		}
+	}
+	return list
 }

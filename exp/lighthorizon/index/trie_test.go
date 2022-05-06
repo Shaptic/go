@@ -1,6 +1,7 @@
 package index
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/tchap/go-patricia/patricia"
 )
 
 func randomTrie(t *testing.T, index *TrieIndex) (*TrieIndex, map[string]uint32) {
@@ -20,9 +22,7 @@ func randomTrie(t *testing.T, index *TrieIndex) (*TrieIndex, map[string]uint32) 
 	for j := 0; j < numInserts; j++ {
 		ledger := uint32(rand.Int63())
 		hashBytes := make([]byte, 32)
-		if _, err := rand.Read(hashBytes); err != nil {
-			t.Error(err.Error())
-		}
+		rand.Read(hashBytes) // never fails
 		hash := hex.EncodeToString(hashBytes)
 
 		inserts[hash] = ledger
@@ -317,4 +317,154 @@ func TestTrieIndexMerge(t *testing.T) {
 			}
 		}
 	}
+}
+
+func BenchmarkTrieOperations(b *testing.B) {
+	b.Run("insert", func(bb *testing.B) {
+		for trial := 0; trial < bb.N; trial++ {
+			makeBenchmarkedTrie(1000)
+		}
+	})
+
+	b.Run("get", func(bb *testing.B) {
+		randomBytes := make([]byte, 8*bb.N)
+		rand.Read(randomBytes)
+		trie := makeBenchmarkedTrie(10_000)
+		bb.ResetTimer()
+
+		for trial := 0; trial < bb.N; trial++ {
+			word := randomBytes[8*trial : 8*trial+8]
+			trie.Get(word)
+		}
+	})
+
+	b.Run("merge", func(bb *testing.B) {
+		for trial := 0; trial < bb.N; trial++ {
+			bb.StopTimer()
+			trie1, trie2 := makeBenchmarkedTrie(1000), makeBenchmarkedTrie(1000)
+			bb.StartTimer()
+
+			trie1.Merge(trie2)
+		}
+	})
+
+	b.Run("serialization", func(bb *testing.B) {
+		for trial := 0; trial < bb.N; trial++ {
+			bb.StopTimer()
+			trie := makeBenchmarkedTrie(10_000)
+			bb.StartTimer()
+
+			b := bytes.NewBuffer(nil)
+			writer := bufio.NewWriter(b)
+			trie.WriteTo(writer)
+
+			b = bytes.NewBuffer(nil)
+			reader := bufio.NewReader(b)
+			trie.ReadFrom(reader)
+		}
+	})
+}
+
+func BenchmarkParticiaOperations(b *testing.B) {
+	b.Run("insert", func(bb *testing.B) {
+		for trial := 0; trial < bb.N; trial++ {
+			makeBenchmarkedPatricia(1000)
+		}
+	})
+
+	b.Run("get", func(bb *testing.B) {
+		randomBytes := make([]byte, 8*bb.N)
+		rand.Read(randomBytes)
+		trie := makeBenchmarkedPatricia(10_000)
+		bb.ResetTimer()
+
+		for trial := 0; trial < bb.N; trial++ {
+			word := randomBytes[8*trial : 8*trial+8]
+			trie.Get(word)
+		}
+	})
+
+	b.Run("merge", func(bb *testing.B) {
+		for trial := 0; trial < bb.N; trial++ {
+			bb.StopTimer()
+			trie1, trie2 := makeBenchmarkedPatricia(1000), makeBenchmarkedPatricia(1000)
+			bb.StartTimer()
+
+			trie1.Visit(patricia.VisitorFunc(
+				func(prefix patricia.Prefix, item patricia.Item) (err error) {
+					trie2.Insert(prefix, item)
+					return nil
+				}),
+			)
+		}
+	})
+
+	b.Run("serialization", func(bb *testing.B) {
+		for trial := 0; trial < bb.N; trial++ {
+			bb.StopTimer()
+			trie := makeBenchmarkedPatricia(10_000)
+			b := bytes.NewBuffer(nil)
+			writer := bufio.NewWriter(b)
+			bb.StartTimer()
+
+			trie.Visit(patricia.VisitorFunc(
+				func(prefix patricia.Prefix, item patricia.Item) (err error) {
+					_, err = writer.Write(prefix)
+					if err != nil {
+						return err
+					}
+					_, err = writer.Write(item.([]byte))
+					if err != nil {
+						return err
+					}
+					return nil
+				},
+			))
+		}
+	})
+}
+
+func makeHellaEntries(count int) ([]string, [][]byte) {
+	randomBytes := make([]byte, 32*count)
+	rand.Read(randomBytes)
+
+	randomHashes := make([]string, count)
+	for i := 0; i < len(randomBytes); i += 32 {
+		hash := hex.EncodeToString(randomBytes[i : i+32])
+		randomHashes[i/32] = hash
+	}
+
+	randomKeys := make([][]byte, count)
+	for i := 0; i < count; i++ {
+		key := make([]byte, 4)
+		randomKeys[i] = key
+		ledger := uint32(rand.Int63())
+		binary.BigEndian.PutUint32(key, ledger)
+	}
+
+	return randomHashes, randomKeys
+}
+
+func makeBenchmarkedTrie(count int) *TrieIndex {
+	trie := &TrieIndex{}
+	randomHashes, randomKeys := makeHellaEntries(count)
+
+	for i := 0; i < len(randomHashes); i++ {
+		hash, key := []byte(randomHashes[i]), randomKeys[i]
+		trie.Upsert(key, hash)
+	}
+
+	return trie
+}
+
+func makeBenchmarkedPatricia(count int) *patricia.Trie {
+	trie := patricia.NewTrie()
+	randomHashes, randomKeys := makeHellaEntries(count)
+
+	for i := 0; i < len(randomHashes); i++ {
+		hash, key := []byte(randomHashes[i]), randomKeys[i]
+		trie.Insert(key, hash)
+	}
+
+	return trie
 }

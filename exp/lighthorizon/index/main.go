@@ -2,6 +2,7 @@ package index
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"sync"
 
@@ -54,6 +55,10 @@ func (i *CheckpointIndex) rangeLastCheckpoint() uint32 {
 }
 
 func (i *CheckpointIndex) setActive(checkpoint uint32) error {
+	if checkpoint == 0 {
+		return errors.New("Activating checkpoint 0 is nonsense")
+	}
+
 	if i.firstCheckpoint == 0 {
 		i.firstCheckpoint = checkpoint
 		i.lastCheckpoint = checkpoint
