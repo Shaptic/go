@@ -18,13 +18,35 @@ type BatchConfig struct {
 	TxMetaSourceUrl, TargetUrl string
 }
 
-func NewBatchConfigFromEnvironment() (*BatchConfig, error) {
-	const (
-		jobIndexEnv        = "AWS_BATCH_JOB_ARRAY_INDEX"
-		firstCheckpointEnv = "FIRST_CHECKPOINT"
-		batchSizeEnv       = "BATCH_SIZE"
-		txmetaSourceUrlEnv = "TXMETA_SOURCE"
-	)
+const (
+	batchSizeEnv       = "BATCH_SIZE"
+	jobIndexEnv        = "AWS_BATCH_JOB_ARRAY_INDEX"
+	firstCheckpointEnv = "FIRST_CHECKPOINT"
+	txmetaSourceUrlEnv = "TXMETA_SOURCE"
+	txmetaTargetUrlEnv = "TXMETA_TARGET"
+
+	s3BucketName = "sdf-txmeta-pubnet"
+)
+
+func NewS3BatchConfig() (*BatchConfig, error) {
+	jobIndex, err := strconv.ParseUint(os.Getenv(jobIndexEnv), 10, 32)
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid parameter "+jobIndexEnv)
+	}
+
+	url := fmt.Sprintf("s3://%s/job_%d?region=%s", s3BucketName, jobIndex, "us-east-1")
+	if err := os.Setenv(txmetaTargetUrlEnv, url); err != nil {
+		return nil, err
+	}
+
+	return NewBatchConfig()
+}
+
+func NewBatchConfig() (*BatchConfig, error) {
+	targetUrl := os.Getenv(txmetaTargetUrlEnv)
+	if targetUrl == "" {
+		return nil, errors.New("required parameter: " + txmetaTargetUrlEnv)
+	}
 
 	jobIndex, err := strconv.ParseUint(os.Getenv(jobIndexEnv), 10, 32)
 	if err != nil {
@@ -34,6 +56,9 @@ func NewBatchConfigFromEnvironment() (*BatchConfig, error) {
 	firstCheckpoint, err := strconv.ParseUint(os.Getenv(firstCheckpointEnv), 10, 32)
 	if err != nil {
 		return nil, errors.Wrap(err, "invalid parameter "+firstCheckpointEnv)
+	}
+	if (firstCheckpoint+1)%64 != 0 {
+		return nil, fmt.Errorf("invalid checkpoint: %d", firstCheckpoint)
 	}
 
 	batchSize, err := strconv.ParseUint(os.Getenv(batchSizeEnv), 10, 32)
@@ -46,19 +71,25 @@ func NewBatchConfigFromEnvironment() (*BatchConfig, error) {
 		return nil, errors.New("required parameter " + txmetaSourceUrlEnv)
 	}
 
+	log.Debugf("%s: %d", batchSizeEnv, batchSize)
+	log.Debugf("%s: %d", jobIndexEnv, jobIndex)
+	log.Debugf("%s: %d", firstCheckpointEnv, firstCheckpoint)
+	log.Debugf("%s: %v", txmetaSourceUrlEnv, sourceUrl)
+
 	startCheckpoint := uint32(firstCheckpoint + batchSize*jobIndex)
 	endCheckpoint := startCheckpoint + uint32(batchSize) - 1
 	return &BatchConfig{
 		Range:           historyarchive.Range{Low: startCheckpoint, High: endCheckpoint},
-		TargetUrl:       fmt.Sprintf("s3://some-url/job_%d?region=%s", jobIndex, "us-east-1"),
 		TxMetaSourceUrl: sourceUrl,
+		TargetUrl:       targetUrl,
 	}, nil
 }
 
 func main() {
+	// log.SetLevel(log.DebugLevel)
 	log.SetLevel(log.InfoLevel)
 
-	batch, err := NewBatchConfigFromEnvironment()
+	batch, err := NewBatchConfig()
 	if err != nil {
 		panic(err)
 	}
