@@ -16,7 +16,7 @@ import (
 
 var (
 	// Should we use runtime.NumCPU() for a reasonable default?
-	parallel = uint32(16)
+	workerCount = uint32(16)
 )
 
 type ReduceConfig struct {
@@ -92,7 +92,7 @@ func main() {
 
 		log.Info("Outer job ", i, " accounts ", len(accounts))
 
-		ch := make(chan string, parallel)
+		ch := make(chan string, workerCount)
 		go func() {
 			for _, account := range accounts {
 				if doneAccounts.Contains(account) {
@@ -109,8 +109,8 @@ func main() {
 		// ctx := context.Background()
 		// wg, ctx := errgroup.WithContext(ctx)
 
-		wg.Add(int(parallel))
-		for j := uint32(0); j < parallel; j++ {
+		wg.Add(int(workerCount))
+		for j := uint32(0); j < workerCount; j++ {
 			go func(routineIndex uint32) {
 				defer wg.Done()
 				var skipped, processed uint64
@@ -124,7 +124,7 @@ func main() {
 
 					if !shouldAccountBeProcessed(account,
 						config.JobIndex, config.ReduceJobCount,
-						routineIndex, parallel,
+						routineIndex, workerCount,
 					) {
 						skipped++
 						continue
@@ -141,20 +141,17 @@ func main() {
 					}
 
 					for k := uint32(i + 1); k < config.MapJobCount; k++ {
-						innerJobStore, err := index.NewS3Store(
-							&aws.Config{Region: aws.String(s3Region)},
-							fmt.Sprintf("job_%d", k),
-							parallel,
-						)
+						url := fmt.Sprintf("s3://job_%d?region=%s&workers=%d",
+							k, s3Region, workerCount)
+						innerJobStore, err := index.Connect(url)
 						if err != nil {
 							panic(err)
 						}
 
 						innerAccountIndexes, err := innerJobStore.Read(account)
-						if err != nil {
-							if err == os.ErrNotExist {
-								continue
-							}
+						if err == os.ErrNotExist {
+							continue
+						} else if err != nil {
 							panic(err)
 						}
 
@@ -178,16 +175,14 @@ func main() {
 
 					if processed%200 == 0 {
 						log.Infof("Flushing %d, processed %d", routineIndex, processed)
-						err = indexStore.Flush()
-						if err != nil {
+						if err = indexStore.Flush(); err != nil {
 							panic(err)
 						}
 					}
 				}
 
 				log.Infof("Flushing Accounts %d, processed %d", routineIndex, processed)
-				err = indexStore.Flush()
-				if err != nil {
+				if err = indexStore.Flush(); err != nil {
 					panic(err)
 				}
 
@@ -197,7 +192,7 @@ func main() {
 				for i := byte(0x00); i < 0xff; i++ {
 					if !shouldTransactionBeProcessed(i,
 						config.JobIndex, config.ReduceJobCount,
-						routineIndex, parallel,
+						routineIndex, workerCount,
 					) {
 						skipped++
 						continue
@@ -210,17 +205,16 @@ func main() {
 						innerJobStore, err := index.NewS3Store(
 							&aws.Config{Region: aws.String("us-east-1")},
 							fmt.Sprintf("job_%d", k),
-							parallel,
+							workerCount,
 						)
 						if err != nil {
 							panic(err)
 						}
 
 						innerTxnIndexes, err := innerJobStore.ReadTransactions(prefix)
-						if err != nil {
-							if err == os.ErrNotExist {
-								continue
-							}
+						if err == os.ErrNotExist {
+							continue
+						} else if err != nil {
 							panic(err)
 						}
 
@@ -231,8 +225,7 @@ func main() {
 				}
 
 				log.Infof("Flushing Transactions %d, processed %d", routineIndex, processed)
-				err = indexStore.Flush()
-				if err != nil {
+				if err = indexStore.Flush(); err != nil {
 					panic(err)
 				}
 			}(j)
