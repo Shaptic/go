@@ -60,6 +60,11 @@ func ReduceConfigFromEnvironment() (*ReduceConfig, error) {
 func main() {
 	log.SetLevel(log.InfoLevel)
 
+	const (
+		s3Region = "us-east-1"
+		s3Path   = "some-path"
+	)
+
 	doneAccounts := NewSafeStringSet()
 
 	config, err := ReduceConfigFromEnvironment()
@@ -67,14 +72,15 @@ func main() {
 		panic(err)
 	}
 
-	indexStore, err := index.Connect("s3://some-path/?region=us-east-1")
+	url := fmt.Sprintf("s3://%s/?region=%s", s3Path, s3Region)
+	indexStore, err := index.Connect(url)
 	if err != nil {
 		panic(err)
 	}
 
 	for i := uint32(0); i < config.MapJobCount; i++ {
-		outerJobStore, err := index.Connect(
-			fmt.Sprintf("s3://some-path/job_%d/?region=us-east-1", i))
+		url = fmt.Sprintf("s3://%s/job_%d?region=%s", s3Path, i, s3Region)
+		outerJobStore, err := index.Connect(url)
 		if err != nil {
 			panic(err)
 		}
@@ -141,7 +147,7 @@ func main() {
 
 					for k := uint32(i + 1); k < config.MapJobCount; k++ {
 						innerJobStore, err := index.NewS3Store(
-							&aws.Config{Region: aws.String("us-east-1")},
+							&aws.Config{Region: aws.String(s3Region)},
 							fmt.Sprintf("job_%d", k),
 							parallel,
 						)
@@ -267,8 +273,7 @@ func shouldAccountBeProcessed(account string,
 ) bool {
 	hash := fnv.New64a()
 
-	// The documentation (https://pkg.go.dev/hash#Hash) states that Write will
-	// never return an error.
+	// Docs state (https://pkg.go.dev/hash#Hash) that Write will never error.
 	hash.Write([]byte(account))
 	digest := uint32(hash.Sum64()) // discard top 32 bits
 

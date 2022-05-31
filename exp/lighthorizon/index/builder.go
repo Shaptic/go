@@ -114,7 +114,9 @@ func BuildIndices(
 				// Assertion for testing
 				if ledgerRange.High != endLedger &&
 					(ledgerRange.High+1)%64 != 0 {
-					log.Fatalf("Uh oh: bad range")
+					log.Fatalf(
+						"Uh oh, upper ledger isn't a checkpoint (%+v)",
+						ledgerRange)
 				}
 
 				err = indexBuilder.Build(ctx, ledgerRange)
@@ -122,7 +124,7 @@ func BuildIndices(
 					return err
 				}
 
-				PostProgress("Reading ledgers",
+				PrintProgress("Reading ledgers",
 					nprocessed, uint64(ledgerCount), startTime)
 
 				// Upload indices once per checkpoint to save memory
@@ -138,7 +140,7 @@ func BuildIndices(
 		return err
 	}
 
-	PostProgress("Reading ledgers",
+	PrintProgress("Reading ledgers",
 		uint64(ledgerCount), uint64(ledgerCount), startTime)
 
 	// Assertion for testing
@@ -158,7 +160,6 @@ func BuildIndices(
 type Module func(
 	idx Store,
 	ledger xdr.LedgerCloseMeta,
-	checkpoint uint32, // technically this is derivable from the meta?
 	transaction ingest.LedgerTransaction,
 ) error
 
@@ -192,11 +193,10 @@ func (builder *IndexBuilder) RegisterModule(module Module) {
 // RunModules executes all of the registered modules on the given ledger.
 func (builder *IndexBuilder) RunModules(
 	ledger xdr.LedgerCloseMeta,
-	checkpoint uint32,
 	tx ingest.LedgerTransaction,
 ) error {
 	for _, module := range builder.modules {
-		if err := module(builder.store, ledger, checkpoint, tx); err != nil {
+		if err := module(builder.store, ledger, tx); err != nil {
 			return err
 		}
 	}
@@ -208,8 +208,8 @@ func (builder *IndexBuilder) RunModules(
 // on the registered modules.
 //
 // TODO: We can probably optimize this by doing GetLedger in parallel with the
-//       ingestion & index building, since the network will be idle during the
-//       latter portion.
+// ingestion & index building, since the network will be idle during the latter
+// portion.
 func (builder *IndexBuilder) Build(ctx context.Context, ledgerRange historyarchive.Range) error {
 	for ledgerSeq := ledgerRange.Low; ledgerSeq <= ledgerRange.High; ledgerSeq++ {
 		ledger, err := builder.history.GetLedger(ctx, ledgerSeq)
@@ -217,8 +217,6 @@ func (builder *IndexBuilder) Build(ctx context.Context, ledgerRange historyarchi
 			log.WithField("error", err).Errorf("error getting ledger %d", ledgerSeq)
 			return err
 		}
-
-		checkpoint := (ledgerSeq / 64) + 1
 
 		reader, err := ingest.NewLedgerTransactionReaderFromLedgerCloseMeta(
 			builder.networkPassphrase, ledger)
@@ -234,7 +232,7 @@ func (builder *IndexBuilder) Build(ctx context.Context, ledgerRange historyarchi
 				return err
 			}
 
-			if err := builder.RunModules(ledger, checkpoint, tx); err != nil {
+			if err := builder.RunModules(ledger, tx); err != nil {
 				return err
 			}
 		}
@@ -246,7 +244,6 @@ func (builder *IndexBuilder) Build(ctx context.Context, ledgerRange historyarchi
 func ProcessTransaction(
 	indexStore Store,
 	ledger xdr.LedgerCloseMeta,
-	_ uint32,
 	tx ingest.LedgerTransaction,
 ) error {
 	return indexStore.AddTransactionToIndexes(
@@ -257,10 +254,10 @@ func ProcessTransaction(
 
 func ProcessAccounts(
 	indexStore Store,
-	_ xdr.LedgerCloseMeta,
-	checkpoint uint32,
+	ledger xdr.LedgerCloseMeta,
 	tx ingest.LedgerTransaction,
 ) error {
+	checkpoint := (ledger.LedgerSequence() / 64) + 1
 	allParticipants, err := getParticipants(tx)
 	if err != nil {
 		return err
@@ -295,6 +292,48 @@ func ProcessAccounts(
 
 	return nil
 }
+
+func ProcessAccountsWithoutBackend(
+	indexStore Store,
+	ledger xdr.LedgerCloseMeta,
+	tx ingest.LedgerTransaction,
+) error {
+	checkpoint := (ledger.LedgerSequence() / 64) + 1
+	allParticipants, err := getParticipants(tx)
+	if err != nil {
+		return err
+	}
+
+	err = indexStore.AddParticipantsToIndexesNoBackend(checkpoint, "all_all", allParticipants)
+	if err != nil {
+		return err
+	}
+
+	paymentsParticipants, err := getPaymentParticipants(tx)
+	if err != nil {
+		return err
+	}
+
+	err = indexStore.AddParticipantsToIndexesNoBackend(checkpoint, "all_payments", paymentsParticipants)
+	if err != nil {
+		return err
+	}
+
+	if tx.Result.Successful() {
+		err = indexStore.AddParticipantsToIndexesNoBackend(checkpoint, "successful_all", allParticipants)
+		if err != nil {
+			return err
+		}
+
+		err = indexStore.AddParticipantsToIndexesNoBackend(checkpoint, "successful_payments", paymentsParticipants)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func getPaymentParticipants(transaction ingest.LedgerTransaction) ([]string, error) {
 	return participantsForOperations(transaction, true)
 }
@@ -440,48 +479,7 @@ func getLedgerKeyParticipants(ledgerKey xdr.LedgerKey) []string {
 	return []string{}
 }
 
-func ProcessAccountsWithoutBackend(
-	indexStore Store,
-	_ xdr.LedgerCloseMeta,
-	checkpoint uint32,
-	tx ingest.LedgerTransaction,
-) error {
-	allParticipants, err := getParticipants(tx)
-	if err != nil {
-		return err
-	}
-
-	err = indexStore.AddParticipantsToIndexesNoBackend(checkpoint, "all_all", allParticipants)
-	if err != nil {
-		return err
-	}
-
-	paymentsParticipants, err := getPaymentParticipants(tx)
-	if err != nil {
-		return err
-	}
-
-	err = indexStore.AddParticipantsToIndexesNoBackend(checkpoint, "all_payments", paymentsParticipants)
-	if err != nil {
-		return err
-	}
-
-	if tx.Result.Successful() {
-		err = indexStore.AddParticipantsToIndexesNoBackend(checkpoint, "successful_all", allParticipants)
-		if err != nil {
-			return err
-		}
-
-		err = indexStore.AddParticipantsToIndexesNoBackend(checkpoint, "successful_payments", paymentsParticipants)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func PostProgress(prefix string, done, total uint64, startTime time.Time) {
+func PrintProgress(prefix string, done, total uint64, startTime time.Time) {
 	// This should never happen, more of a runtime assertion for now.
 	// We can remove it when production-ready.
 	if done > total {
