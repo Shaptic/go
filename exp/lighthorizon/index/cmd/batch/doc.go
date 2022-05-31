@@ -46,7 +46,7 @@
 //     if XXXX % REDUCE_JOBS == JOB_ID and YYYY % WORKERS_COUNT = WORKER_ID
 //     then process a given account by merging all indexes of a given account
 //     in all map step results, then mark account as done so if the account
-//     is seen again it will be skiped,
+//     is seen again it will be skipped.
 //
 //     else: skip the account.
 //

@@ -193,9 +193,9 @@ func (s *S3Backend) Read(account string) (map[string]*CheckpointIndex, error) {
 
 func (s *S3Backend) ReadTransactions(prefix string) (*TrieIndex, error) {
 	// Check if index exists in S3
-	log.Debugf("Downloading index: %s", prefix)
 	b := &aws.WriteAtBuffer{}
 	path := filepath.Join(s.prefix, "tx", prefix)
+	log.Debugf("Downloading index: %s (path=%s)", prefix, path)
 	n, err := s.downloader.Download(b, &s3.GetObjectInput{
 		Bucket: aws.String(BUCKET),
 		Key:    aws.String(path),

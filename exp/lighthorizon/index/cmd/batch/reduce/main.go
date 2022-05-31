@@ -10,6 +10,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/stellar/go/exp/lighthorizon/index"
+	"github.com/stellar/go/support/errors"
 	"github.com/stellar/go/support/log"
 )
 
@@ -18,54 +19,62 @@ var (
 	parallel = uint32(16)
 )
 
-func main() {
-	log.SetLevel(log.InfoLevel)
-	jobIndexString := os.Getenv("AWS_BATCH_JOB_ARRAY_INDEX")
-	if jobIndexString == "" {
-		panic("AWS_BATCH_JOB_ARRAY_INDEX env required")
-	}
+type SafeStringSet struct {
+	lock sync.Mutex
+	set  map[string]struct{}
+}
 
-	mapJobsString := os.Getenv("MAP_JOBS")
-	if mapJobsString == "" {
-		panic("MAP_JOBS env required")
-	}
+type ReduceConfig struct {
+	JobIndex       uint32
+	MapJobCount    uint32
+	ReduceJobCount uint32
+}
 
-	reduceJobsString := os.Getenv("REDUCE_JOBS")
-	if mapJobsString == "" {
-		panic("REDUCE_JOBS env required")
-	}
-
-	jobIndex, err := strconv.ParseUint(jobIndexString, 10, 64)
-	if err != nil {
-		panic(err)
-	}
-
-	mapJobs, err := strconv.ParseUint(mapJobsString, 10, 64)
-	if err != nil {
-		panic(err)
-	}
-
-	reduceJobs, err := strconv.ParseUint(reduceJobsString, 10, 64)
-	if err != nil {
-		panic(err)
-	}
-
-	var (
-		mutex        sync.Mutex
-		doneAccounts map[string]struct{} = map[string]struct{}{}
+func ReduceConfigFromEnvironment() (*ReduceConfig, error) {
+	const (
+		jobIndexEnv   = "AWS_BATCH_JOB_ARRAY_INDEX"
+		mapJobsEnv    = "MAP_JOBS"
+		reduceJobsEnv = "REDUCE_JOBS"
 	)
 
-	indexStore, err := index.NewS3Store(&aws.Config{Region: aws.String("us-east-1")}, "", parallel)
+	jobIndex, err := strconv.ParseUint(os.Getenv(jobIndexEnv), 10, 32)
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid parameter "+jobIndexEnv)
+	}
+	mapJobs, err := strconv.ParseUint(os.Getenv(mapJobsEnv), 10, 32)
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid parameter "+mapJobsEnv)
+	}
+	reduceJobs, err := strconv.ParseUint(os.Getenv(reduceJobsEnv), 10, 32)
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid parameter "+reduceJobsEnv)
+	}
+
+	return &ReduceConfig{
+		JobIndex:       uint32(jobIndex),
+		MapJobCount:    uint32(mapJobs),
+		ReduceJobCount: uint32(reduceJobs),
+	}, nil
+}
+
+func main() {
+	log.SetLevel(log.InfoLevel)
+
+	doneAccounts := NewSafeStringSet()
+
+	config, err := ReduceConfigFromEnvironment()
 	if err != nil {
 		panic(err)
 	}
 
-	for i := uint64(0); i < mapJobs; i++ {
-		outerJobStore, err := index.NewS3Store(
-			&aws.Config{Region: aws.String("us-east-1")},
-			fmt.Sprintf("job_%d", i),
-			parallel,
-		)
+	indexStore, err := index.Connect("s3://some-path/?region=us-east-1")
+	if err != nil {
+		panic(err)
+	}
+
+	for i := uint32(0); i < config.MapJobCount; i++ {
+		outerJobStore, err := index.Connect(
+			fmt.Sprintf("s3://some-path/job_%d/?region=us-east-1", i))
 		if err != nil {
 			panic(err)
 		}
@@ -85,10 +94,7 @@ func main() {
 		ch := make(chan string, parallel)
 		go func() {
 			for _, account := range accounts {
-				mutex.Lock()
-				_, ok := doneAccounts[account]
-				mutex.Unlock()
-				if ok {
+				if doneAccounts.Contains(account) {
 					// Account index already merged in the previous outer job
 					continue
 				}
@@ -98,37 +104,27 @@ func main() {
 		}()
 
 		var wg sync.WaitGroup
+		// TODO
+		// ctx := context.Background()
+		// wg, ctx := errgroup.WithContext(ctx)
+
 		wg.Add(int(parallel))
 		for j := uint32(0); j < parallel; j++ {
-			go func(routine uint32) {
+			go func(routineIndex uint32) {
 				defer wg.Done()
 				var skipped, processed uint64
 				for account := range ch {
-					if (processed+skipped)%1000 == 0 {
-						log.Infof(
-							"outer: %d, routine: %d, processed: %d, skipped: %d, all account in outer job: %d\n",
-							i, routine, processed, skipped, len(accounts),
-						)
-					}
+					// if (processed+skipped)%1000 == 0 {
+					log.Infof(
+						"outer: %d, routine: %d, processed: %d, skipped: %d, all account in outer job: %d\n",
+						i, routineIndex, processed, skipped, len(accounts),
+					)
+					// }
 
-					hash := fnv.New64a()
-					_, err = hash.Write([]byte(account))
-					if err != nil {
-						panic(err)
-					}
-
-					hashSum := hash.Sum64()
-					hashLeft := uint32(hashSum >> 4)
-					hashRight := uint32(0x0000ffff & hashSum)
-
-					if hashRight%uint32(reduceJobs) != uint32(jobIndex) {
-						// This job is not merging this account
-						skipped++
-						continue
-					}
-
-					if hashLeft%uint32(parallel) != uint32(routine) {
-						// This go routine is not merging this account
+					if !shouldAccountBeProcessed(account,
+						config.JobIndex, config.ReduceJobCount,
+						routineIndex, parallel,
+					) {
 						skipped++
 						continue
 					}
@@ -143,7 +139,7 @@ func main() {
 						panic(err)
 					}
 
-					for k := uint64(i + 1); k < mapJobs; k++ {
+					for k := uint32(i + 1); k < config.MapJobCount; k++ {
 						innerJobStore, err := index.NewS3Store(
 							&aws.Config{Region: aws.String("us-east-1")},
 							fmt.Sprintf("job_%d", k),
@@ -176,13 +172,11 @@ func main() {
 					indexStore.AddParticipantToIndexesNoBackend(account, outerAccountIndexes)
 
 					// Mark account as done
-					mutex.Lock()
-					doneAccounts[account] = struct{}{}
-					mutex.Unlock()
+					doneAccounts.Add(account)
 					processed++
 
 					if processed%200 == 0 {
-						log.Infof("Flushing %d, processed %d", routine, processed)
+						log.Infof("Flushing %d, processed %d", routineIndex, processed)
 						err = indexStore.Flush()
 						if err != nil {
 							panic(err)
@@ -190,7 +184,7 @@ func main() {
 					}
 				}
 
-				log.Infof("Flushing Accounts %d, processed %d", routine, processed)
+				log.Infof("Flushing Accounts %d, processed %d", routineIndex, processed)
 				err = indexStore.Flush()
 				if err != nil {
 					panic(err)
@@ -200,16 +194,10 @@ func main() {
 				// There's 256 files, (one for each first byte of the txn hash)
 				processed = 0
 				for i := byte(0x00); i < 0xff; i++ {
-					hashLeft := uint32(i >> 4)
-					hashRight := uint32(0x0f & i)
-					if hashRight%uint32(reduceJobs) != uint32(jobIndex) {
-						// This job is not merging this prefix
-						skipped++
-						continue
-					}
-
-					if hashLeft%uint32(parallel) != uint32(routine) {
-						// This go routine is not merging this prefix
+					if !shouldTransactionBeProcessed(i,
+						config.JobIndex, config.ReduceJobCount,
+						routineIndex, parallel,
+					) {
 						skipped++
 						continue
 					}
@@ -217,7 +205,7 @@ func main() {
 
 					prefix := hex.EncodeToString([]byte{i})
 
-					for k := uint64(0); k < mapJobs; k++ {
+					for k := uint32(0); k < config.MapJobCount; k++ {
 						innerJobStore, err := index.NewS3Store(
 							&aws.Config{Region: aws.String("us-east-1")},
 							fmt.Sprintf("job_%d", k),
@@ -241,7 +229,7 @@ func main() {
 					}
 				}
 
-				log.Infof("Flushing Transactions %d, processed %d", routine, processed)
+				log.Infof("Flushing Transactions %d, processed %d", routineIndex, processed)
 				err = indexStore.Flush()
 				if err != nil {
 					panic(err)
@@ -251,4 +239,59 @@ func main() {
 
 		wg.Wait()
 	}
+}
+
+func NewSafeStringSet() *SafeStringSet {
+	return &SafeStringSet{
+		lock: sync.Mutex{},
+		set:  map[string]struct{}{},
+	}
+}
+
+func (set *SafeStringSet) Contains(key string) bool {
+	defer set.lock.Unlock()
+	set.lock.Lock()
+	_, ok := set.set[key]
+	return ok
+}
+
+func (set *SafeStringSet) Add(key string) {
+	defer set.lock.Unlock()
+	set.lock.Lock()
+	set.set[key] = struct{}{}
+}
+
+func shouldAccountBeProcessed(account string,
+	jobIndex, jobCount uint32,
+	routineIndex, routineCount uint32,
+) bool {
+	hash := fnv.New64a()
+
+	// The documentation (https://pkg.go.dev/hash#Hash) states that Write will
+	// never return an error.
+	hash.Write([]byte(account))
+	digest := uint32(hash.Sum64()) // discard top 32 bits
+
+	leftHalf := digest >> 4
+	rightHalf := digest & 0x0000FFFF
+
+	// Because the digest is basically a random number (given a good hash
+	// function), its remainders w.r.t. the indices will distribute the work
+	// fairly (and deterministically).
+	return leftHalf%jobCount == jobIndex &&
+		rightHalf%routineCount == routineIndex
+}
+
+func shouldTransactionBeProcessed(transactionPrefix byte,
+	jobIndex, jobCount uint32,
+	routineIndex, routineCount uint32,
+) bool {
+	hashLeft := uint32(transactionPrefix >> 4)
+	hashRight := uint32(0x0F & transactionPrefix)
+
+	// Because the transaction hash (and thus the first byte or "prefix") is a
+	// random value, its remainders w.r.t. the indices will distribute the work
+	// fairly (and deterministically).
+	return hashRight%jobCount == jobIndex &&
+		hashLeft%routineCount == routineIndex
 }
