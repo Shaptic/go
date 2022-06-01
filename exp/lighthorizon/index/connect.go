@@ -1,13 +1,13 @@
 package index
 
 import (
-	"errors"
 	"fmt"
 	"net/url"
 	"path/filepath"
 	"strconv"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/stellar/go/support/errors"
 )
 
 func Connect(backendUrl string) (Store, error) {
@@ -29,7 +29,7 @@ func Connect(backendUrl string) (Store, error) {
 		if workers := query.Get("workers"); workers != "" {
 			workerCount, err := strconv.ParseUint(workers, 10, 32)
 			if err != nil {
-				return nil, fmt.Errorf("failed to parse worker count (%s): %v", workers, err)
+				return nil, errors.Wrapf(err, "failed to parse worker count (%s)", workers)
 			}
 			if workerCount > 0 {
 				parallel = uint32(workerCount)
@@ -43,6 +43,7 @@ func Connect(backendUrl string) (Store, error) {
 		return NewFileStore(filepath.Join(parsed.Host, parsed.Path), 20)
 
 	default:
-		return nil, errors.New("unknown URL scheme: '" + parsed.Scheme + "'")
+		return nil, fmt.Errorf("unknown URL scheme: '%s' (from %s)",
+			parsed.Scheme, backendUrl)
 	}
 }

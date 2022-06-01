@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/aws/aws-sdk-go/aws"
 	"github.com/stellar/go/exp/lighthorizon/index"
 	"github.com/stellar/go/support/errors"
 	"github.com/stellar/go/support/log"
@@ -18,6 +17,10 @@ import (
 var (
 	// Should we use runtime.NumCPU() for a reasonable default?
 	workerCount = uint32(16)
+)
+
+const (
+	ACCOUNT_FLUSH_FREQUENCY = 200
 )
 
 type ReduceConfig struct {
@@ -131,12 +134,14 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 		for j := uint32(0); j < workerCount; j++ {
 			go func(routineIndex uint32) {
 				defer wg.Done()
-				var skipped, processed uint64
+				logger := log.WithField("worker", i).WithField("routine", routineIndex)
+				logger.Info("Processing accounts...")
+
+				var accountsSkipped, accountsProcessed uint64
 				for account := range ch {
 					// if (processed+skipped)%1000 == 0 {
-					log.Infof(
-						"outer: %d, routine: %d, processed: %d, skipped: %d, all account in outer job: %d\n",
-						i, routineIndex, processed, skipped, len(accounts),
+					logger.Infof("%d accounts processed (%d skipped, %d total)",
+						accountsProcessed, accountsSkipped, len(accounts),
 					)
 					// }
 
@@ -144,7 +149,7 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 						config.JobIndex, config.ReduceJobCount,
 						routineIndex, workerCount,
 					) {
-						skipped++
+						accountsSkipped++
 						continue
 					}
 
@@ -152,17 +157,17 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 					if err != nil {
 						// TODO: in final version this should be critical error, now just skip it
 						if err == os.ErrNotExist {
-							log.Errorf("Account %s is unavailable - TODO fix", account)
+							logger.Errorf("Account %s is unavailable - TODO fix", account)
 							continue
 						}
 						panic(err)
 					}
 
 					for k := uint32(i + 1); k < config.MapJobCount; k++ {
-						url := fmt.Sprintf("s3://job_%d?region=%s&workers=%d",
-							k, s3Region, workerCount)
+						url := path.Join(config.IndexRootSource, fmt.Sprintf("job_%d", k))
 						innerJobStore, err := index.Connect(url)
 						if err != nil {
+							logger.Errorf("Failed to connect to indices at %s: %v", url, err)
 							panic(err)
 						}
 
@@ -170,15 +175,18 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 						if err == os.ErrNotExist {
 							continue
 						} else if err != nil {
+							logger.Errorf("Failed to read indices: %v", err)
 							panic(err)
 						}
 
 						for name, index := range outerAccountIndices {
-							if innerAccountIndices[name] == nil {
+							innerIndices, ok := innerAccountIndices[name]
+							if !ok || innerIndices == nil {
 								continue
 							}
-							err := index.Merge(innerAccountIndices[name])
-							if err != nil {
+
+							if err := index.Merge(innerIndices); err != nil {
+								logger.Errorf("Failed to merge indices for %s: %v", name, err)
 								panic(err)
 							}
 						}
@@ -189,43 +197,47 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 
 					// Mark account as done
 					doneAccounts.Add(account)
-					processed++
+					accountsProcessed++
 
-					if processed%200 == 0 {
-						log.Infof("Flushing %d, processed %d", routineIndex, processed)
+					if accountsProcessed%ACCOUNT_FLUSH_FREQUENCY == 0 {
+						logger.Infof("Flushing %d processed accounts.", accountsProcessed)
+
 						if err = finalIndexStore.Flush(); err != nil {
+							logger.Errorf("Error when flushing: %v", err)
 							panic(err)
 						}
 					}
 				}
 
-				log.Infof("Flushing Accounts %d, processed %d", routineIndex, processed)
+				logger.Infof("Final account flush (%d processed)...", accountsProcessed)
 				if err = finalIndexStore.Flush(); err != nil {
+					logger.Errorf("Error when flushing: %v", err)
 					panic(err)
 				}
 
 				// Merge the transaction indexes
 				// There's 256 files, (one for each first byte of the txn hash)
-				processed = 0
+				var transactionsProcessed, transactionsSkipped uint64
 				for i := byte(0x00); i < 0xff; i++ {
+					logger.Infof("%d transactions processed (%d skipped)",
+						transactionsProcessed, transactionsSkipped)
+
 					if !shouldTransactionBeProcessed(i,
 						config.JobIndex, config.ReduceJobCount,
 						routineIndex, workerCount,
 					) {
-						skipped++
+						transactionsSkipped++
 						continue
 					}
-					processed++
+					transactionsProcessed++
 
 					prefix := hex.EncodeToString([]byte{i})
 
 					for k := uint32(0); k < config.MapJobCount; k++ {
-						innerJobStore, err := index.NewS3Store(
-							&aws.Config{Region: aws.String("us-east-1")},
-							fmt.Sprintf("job_%d", k),
-							workerCount,
-						)
+						url := path.Join(config.IndexRootSource, fmt.Sprintf("job_%d", k))
+						innerJobStore, err := index.Connect(url)
 						if err != nil {
+							logger.Errorf("Error connecting to indices at %s", url)
 							panic(err)
 						}
 
@@ -233,17 +245,20 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 						if err == os.ErrNotExist {
 							continue
 						} else if err != nil {
+							logger.Errorf("Error reading transactions: %v", err)
 							panic(err)
 						}
 
 						if err := finalIndexStore.MergeTransactions(prefix, innerTxnIndexes); err != nil {
+							logger.Errorf("Error merging transactions: %v", err)
 							panic(err)
 						}
 					}
 				}
 
-				log.Infof("Flushing Transactions %d, processed %d", routineIndex, processed)
+				logger.Infof("Final transaction flush (%d processed)", transactionsProcessed)
 				if err = finalIndexStore.Flush(); err != nil {
+					logger.Errorf("Error flushing transactions: %v", err)
 					panic(err)
 				}
 			}(j)
