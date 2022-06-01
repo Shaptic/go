@@ -27,9 +27,9 @@ type ReduceConfig struct {
 
 func ReduceConfigFromEnvironment() (*ReduceConfig, error) {
 	const (
+		mapJobsEnv    = "MAP_JOB_COUNT"
+		reduceJobsEnv = "REDUCE_JOB_COUNT"
 		jobIndexEnv   = "AWS_BATCH_JOB_ARRAY_INDEX"
-		mapJobsEnv    = "MAP_JOBS"
-		reduceJobsEnv = "REDUCE_JOBS"
 	)
 
 	jobIndex, err := strconv.ParseUint(os.Getenv(jobIndexEnv), 10, 32)
@@ -52,32 +52,36 @@ func ReduceConfigFromEnvironment() (*ReduceConfig, error) {
 	}, nil
 }
 
+const (
+	s3Region = "us-east-1"
+)
+
 func main() {
 	log.SetLevel(log.InfoLevel)
-
-	const (
-		s3Region = "us-east-1"
-		s3Path   = "some-path"
-	)
-
-	doneAccounts := NewSafeStringSet()
 
 	config, err := ReduceConfigFromEnvironment()
 	if err != nil {
 		panic(err)
 	}
 
-	url := fmt.Sprintf("s3://%s/?region=%s", s3Path, s3Region)
-	indexStore, err := index.Connect(url)
+	url := fmt.Sprintf("s3:///?region=%s", s3Region)
+	finalIndexStore, err := index.Connect(url)
 	if err != nil {
 		panic(err)
 	}
 
+	if err := mergeAllIndices(finalIndexStore, config); err != nil {
+		panic(err)
+	}
+}
+
+func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
+	doneAccounts := NewSafeStringSet()
 	for i := uint32(0); i < config.MapJobCount; i++ {
-		url = fmt.Sprintf("s3://%s/job_%d?region=%s", s3Path, i, s3Region)
+		url := fmt.Sprintf("s3://job_%d/?region=%s", i, s3Region)
 		outerJobStore, err := index.Connect(url)
 		if err != nil {
-			panic(err)
+			return errors.Wrapf(err, "failed to connect to indices at %s", url)
 		}
 
 		accounts, err := outerJobStore.ReadAccounts()
@@ -87,7 +91,7 @@ func main() {
 				log.Errorf("Job %d is unavailable - TODO fix", i)
 				continue
 			}
-			panic(err)
+			return errors.Wrapf(err, "failed to read accounts for job %d", i)
 		}
 
 		log.Info("Outer job ", i, " accounts ", len(accounts))
@@ -130,7 +134,7 @@ func main() {
 						continue
 					}
 
-					outerAccountIndexes, err := outerJobStore.Read(account)
+					outerAccountIndices, err := outerJobStore.Read(account)
 					if err != nil {
 						// TODO: in final version this should be critical error, now just skip it
 						if err == os.ErrNotExist {
@@ -148,18 +152,18 @@ func main() {
 							panic(err)
 						}
 
-						innerAccountIndexes, err := innerJobStore.Read(account)
+						innerAccountIndices, err := innerJobStore.Read(account)
 						if err == os.ErrNotExist {
 							continue
 						} else if err != nil {
 							panic(err)
 						}
 
-						for name, index := range outerAccountIndexes {
-							if innerAccountIndexes[name] == nil {
+						for name, index := range outerAccountIndices {
+							if innerAccountIndices[name] == nil {
 								continue
 							}
-							err := index.Merge(innerAccountIndexes[name])
+							err := index.Merge(innerAccountIndices[name])
 							if err != nil {
 								panic(err)
 							}
@@ -167,7 +171,7 @@ func main() {
 					}
 
 					// Save merged index
-					indexStore.AddParticipantToIndexesNoBackend(account, outerAccountIndexes)
+					finalIndexStore.AddParticipantToIndexesNoBackend(account, outerAccountIndices)
 
 					// Mark account as done
 					doneAccounts.Add(account)
@@ -175,14 +179,14 @@ func main() {
 
 					if processed%200 == 0 {
 						log.Infof("Flushing %d, processed %d", routineIndex, processed)
-						if err = indexStore.Flush(); err != nil {
+						if err = finalIndexStore.Flush(); err != nil {
 							panic(err)
 						}
 					}
 				}
 
 				log.Infof("Flushing Accounts %d, processed %d", routineIndex, processed)
-				if err = indexStore.Flush(); err != nil {
+				if err = finalIndexStore.Flush(); err != nil {
 					panic(err)
 				}
 
@@ -218,14 +222,14 @@ func main() {
 							panic(err)
 						}
 
-						if err := indexStore.MergeTransactions(prefix, innerTxnIndexes); err != nil {
+						if err := finalIndexStore.MergeTransactions(prefix, innerTxnIndexes); err != nil {
 							panic(err)
 						}
 					}
 				}
 
 				log.Infof("Flushing Transactions %d, processed %d", routineIndex, processed)
-				if err = indexStore.Flush(); err != nil {
+				if err = finalIndexStore.Flush(); err != nil {
 					panic(err)
 				}
 			}(j)
@@ -233,6 +237,8 @@ func main() {
 
 		wg.Wait()
 	}
+
+	return nil
 }
 
 func shouldAccountBeProcessed(account string,
@@ -259,7 +265,7 @@ func shouldTransactionBeProcessed(transactionPrefix byte,
 	jobIndex, jobCount uint32,
 	routineIndex, routineCount uint32,
 ) bool {
-	hashLeft := uint32(transactionPrefix >> 4)
+	hashLeft := uint32(transactionPrefix & 0xF0)
 	hashRight := uint32(0x0F & transactionPrefix)
 
 	// Because the transaction hash (and thus the first byte or "prefix") is a
