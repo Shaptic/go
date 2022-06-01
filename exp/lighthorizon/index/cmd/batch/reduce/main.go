@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"os"
+	"path"
 	"strconv"
 	"sync"
 
@@ -20,16 +21,20 @@ var (
 )
 
 type ReduceConfig struct {
-	JobIndex       uint32
-	MapJobCount    uint32
-	ReduceJobCount uint32
+	JobIndex        uint32
+	MapJobCount     uint32
+	ReduceJobCount  uint32
+	IndexTarget     string
+	IndexRootSource string
 }
 
 func ReduceConfigFromEnvironment() (*ReduceConfig, error) {
 	const (
-		mapJobsEnv    = "MAP_JOB_COUNT"
-		reduceJobsEnv = "REDUCE_JOB_COUNT"
-		jobIndexEnv   = "AWS_BATCH_JOB_ARRAY_INDEX"
+		mapJobsEnv          = "MAP_JOB_COUNT"
+		reduceJobsEnv       = "REDUCE_JOB_COUNT"
+		jobIndexEnv         = "AWS_BATCH_JOB_ARRAY_INDEX"
+		mappedIndicesUrlEnv = "INDEX_SOURCE_ROOT"
+		finalIndexUrlEnv    = "INDEX_TARGET"
 	)
 
 	jobIndex, err := strconv.ParseUint(os.Getenv(jobIndexEnv), 10, 32)
@@ -45,10 +50,22 @@ func ReduceConfigFromEnvironment() (*ReduceConfig, error) {
 		return nil, errors.Wrap(err, "invalid parameter "+reduceJobsEnv)
 	}
 
+	finalIndexUrl := os.Getenv(finalIndexUrlEnv)
+	if finalIndexUrl == "" {
+		return nil, errors.New("required parameter missing " + finalIndexUrlEnv)
+	}
+
+	mappedIndicesUrl := os.Getenv(mappedIndicesUrlEnv)
+	if mappedIndicesUrl == "" {
+		return nil, errors.New("required parameter missing " + mappedIndicesUrlEnv)
+	}
+
 	return &ReduceConfig{
-		JobIndex:       uint32(jobIndex),
-		MapJobCount:    uint32(mapJobs),
-		ReduceJobCount: uint32(reduceJobs),
+		JobIndex:        uint32(jobIndex),
+		MapJobCount:     uint32(mapJobs),
+		ReduceJobCount:  uint32(reduceJobs),
+		IndexTarget:     finalIndexUrl,
+		IndexRootSource: mappedIndicesUrl,
 	}, nil
 }
 
@@ -64,21 +81,21 @@ func main() {
 		panic(err)
 	}
 
-	url := fmt.Sprintf("s3:///?region=%s", s3Region)
-	finalIndexStore, err := index.Connect(url)
+	finalIndexStore, err := index.Connect(config.IndexTarget)
 	if err != nil {
-		panic(err)
+		panic(errors.Wrapf(err, "failed to connect to indices at %s",
+			config.IndexTarget))
 	}
 
 	if err := mergeAllIndices(finalIndexStore, config); err != nil {
-		panic(err)
+		panic(errors.Wrap(err, "failed to merge indices"))
 	}
 }
 
 func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 	doneAccounts := NewSafeStringSet()
 	for i := uint32(0); i < config.MapJobCount; i++ {
-		url := fmt.Sprintf("s3://job_%d/?region=%s", i, s3Region)
+		url := path.Join(config.IndexRootSource, fmt.Sprintf("job_%d", i))
 		outerJobStore, err := index.Connect(url)
 		if err != nil {
 			return errors.Wrapf(err, "failed to connect to indices at %s", url)
@@ -108,11 +125,8 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 			close(ch)
 		}()
 
+		// TODO: errgroup.WithContext(ctx)
 		var wg sync.WaitGroup
-		// TODO
-		// ctx := context.Background()
-		// wg, ctx := errgroup.WithContext(ctx)
-
 		wg.Add(int(workerCount))
 		for j := uint32(0); j < workerCount; j++ {
 			go func(routineIndex uint32) {

@@ -23,7 +23,7 @@ const (
 	jobIndexEnv        = "AWS_BATCH_JOB_ARRAY_INDEX"
 	firstCheckpointEnv = "FIRST_CHECKPOINT"
 	txmetaSourceUrlEnv = "TXMETA_SOURCE"
-	txmetaTargetUrlEnv = "TXMETA_TARGET"
+	indexTargetUrlEnv  = "INDEX_TARGET"
 
 	s3BucketName = "sdf-txmeta-pubnet"
 )
@@ -35,7 +35,7 @@ func NewS3BatchConfig() (*BatchConfig, error) {
 	}
 
 	url := fmt.Sprintf("s3://%s/job_%d?region=%s", s3BucketName, jobIndex, "us-east-1")
-	if err := os.Setenv(txmetaTargetUrlEnv, url); err != nil {
+	if err := os.Setenv(indexTargetUrlEnv, url); err != nil {
 		return nil, err
 	}
 
@@ -43,9 +43,9 @@ func NewS3BatchConfig() (*BatchConfig, error) {
 }
 
 func NewBatchConfig() (*BatchConfig, error) {
-	targetUrl := os.Getenv(txmetaTargetUrlEnv)
+	targetUrl := os.Getenv(indexTargetUrlEnv)
 	if targetUrl == "" {
-		return nil, errors.New("required parameter: " + txmetaTargetUrlEnv)
+		return nil, errors.New("required parameter: " + indexTargetUrlEnv)
 	}
 
 	jobIndex, err := strconv.ParseUint(os.Getenv(jobIndexEnv), 10, 32)
