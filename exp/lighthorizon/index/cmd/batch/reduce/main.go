@@ -108,7 +108,11 @@ func main() {
 func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 	doneAccounts := NewSafeStringSet()
 	for i := uint32(0); i < config.MapJobCount; i++ {
-		url := path.Join(config.IndexRootSource, fmt.Sprintf("job_%d", i))
+		logger := log.WithField("worker", i)
+
+		url := filepath.Join(config.IndexRootSource, "job_"+strconv.FormatUint(uint64(i), 10))
+		logger.Infof("Connecting to %s", url)
+
 		outerJobStore, err := index.Connect(url)
 		if err != nil {
 			return errors.Wrapf(err, "failed to connect to indices at %s", url)
@@ -123,7 +127,7 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 			return errors.Wrapf(err, "failed to read accounts for worker %d", i)
 		}
 
-		log.Info("Outer job ", i, " accounts ", len(accounts))
+		logger.Info("Accounts to process: ", len(accounts))
 
 		ch := make(chan string, config.Workers)
 		go func() {
@@ -146,22 +150,27 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 				logger := log.WithField("worker", i).WithField("routine", routineIndex)
 				logger.Info("Processing accounts...")
 
-				var accountsSkipped, accountsProcessed uint64
+				var accountsProcessed, accountsSkipped uint64
 				for account := range ch {
-					// if (processed+skipped)%1000 == 0 {
-					logger.Infof("%d accounts processed (%d skipped, %d total)",
-						accountsProcessed, accountsSkipped, len(accounts),
-					)
-					// }
+					if (accountsProcessed+accountsSkipped)%97 == 0 {
+						logger.
+							WithField("indexed", accountsProcessed).
+							WithField("skipped", accountsSkipped).
+							WithField("total", len(accounts)).
+							Infof("Processed %d/%d accounts",
+								accountsProcessed+accountsSkipped, len(accounts))
+					}
 
 					if !shouldAccountBeProcessed(account,
 						config.JobIndex, config.ReduceJobCount,
 						routineIndex, config.Workers,
 					) {
+						// logger.Debugf("Skipping '%s'", account)
 						accountsSkipped++
 						continue
 					}
 
+					logger.Debugf("Reading indices for account '%s'", account)
 					outerAccountIndices, err := outerJobStore.Read(account)
 					// TODO: in final version this should be critical error, now just skip it
 					if os.IsNotExist(err) {
@@ -171,8 +180,8 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 						panic(err)
 					}
 
-					for k := uint32(i + 1); k < config.MapJobCount; k++ {
-						url := path.Join(config.IndexRootSource, fmt.Sprintf("job_%d", k))
+					for k := uint32(i); k <= config.MapJobCount; k++ {
+						url := filepath.Join(config.IndexRootSource, fmt.Sprintf("job_%d", k))
 						innerJobStore, err := index.Connect(url)
 						if err != nil {
 							logger.Errorf("Failed to connect to indices at %s: %v", url, err)
@@ -208,10 +217,10 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 					accountsProcessed++
 
 					if accountsProcessed%ACCOUNT_FLUSH_FREQUENCY == 0 {
-						logger.Infof("Flushing %d processed accounts.", accountsProcessed)
+						logger.Infof("Flushing %d indexed accounts.", accountsProcessed)
 
 						if err = finalIndexStore.Flush(); err != nil {
-							logger.Errorf("Error when flushing: %v", err)
+							logger.WithField("error", err).Errorf("Flush error.")
 							panic(err)
 						}
 					}
@@ -219,7 +228,7 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 
 				logger.Infof("Final account flush (%d processed)...", accountsProcessed)
 				if err = finalIndexStore.Flush(); err != nil {
-					logger.Errorf("Error when flushing: %v", err)
+					logger.WithField("error", err).Errorf("Flush error.")
 					panic(err)
 				}
 
