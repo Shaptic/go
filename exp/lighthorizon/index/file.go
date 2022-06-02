@@ -142,8 +142,13 @@ func (s *FileBackend) ReadAccounts() ([]string, error) {
 	path := filepath.Join(s.dir, "accounts")
 	log.Debugf("Opening accounts list at %s", path)
 
-	// This file probably isn't insurmountably large (TODO: Confirm that), so we
-	// can probably read it all in one go.
+	// The entirety of pubnet accounts in a single file will consume ~750MB
+	// (according to Hubble + napkin math). That should never be done on a
+	// single machine anyway. Thus, if this file is insurmountably large to fit
+	// into memory, you should be splitting the work better. That means we can
+	// safely read it all in one go.
+	//
+	// TODO: This can be optimized by ~43% by reading/writing raw public keys.
 	buffer, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return nil, err
