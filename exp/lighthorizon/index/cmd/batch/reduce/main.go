@@ -131,7 +131,7 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 			len(accounts), config.Workers)
 
 		workQueues := make([]chan string, config.Workers)
-		for i, _ := range workQueues {
+		for i := range workQueues {
 			workQueues[i] = make(chan string, 1)
 		}
 
@@ -144,7 +144,7 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 					}
 
 					// Account doesn't belong in this work queue?
-					if config.shouldProcessAccount(account, index) {
+					if !config.shouldProcessAccount(account, index) {
 						continue
 					}
 
@@ -203,7 +203,7 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 						innerJobStore, err := index.Connect(url)
 						if err != nil {
 							logger.WithError(err).
-								Errorf("Failed to open index at %s")
+								Errorf("Failed to open index at %s", url)
 							panic(err)
 						}
 
@@ -325,8 +325,8 @@ func (cfg *ReduceConfig) shouldProcessAccount(account string, routineIndex uint3
 }
 
 func (cfg *ReduceConfig) shouldProcessTx(txPrefix byte, routineIndex uint32) bool {
-	hashLeft := uint32(transactionPrefix >> 4)
-	hashRight := uint32(transactionPrefix & 0x0F)
+	hashLeft := uint32(txPrefix >> 4)
+	hashRight := uint32(txPrefix & 0x0F)
 
 	// Because the transaction hash (and thus the first byte or "prefix") is a
 	// random value, its remainders w.r.t. the indices will distribute the work
