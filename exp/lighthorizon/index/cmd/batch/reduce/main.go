@@ -1,26 +1,23 @@
 package main
 
 import (
-	"encoding/hex"
 	"fmt"
 	"hash/fnv"
 	"os"
-	"path"
+	"path/filepath"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/stellar/go/exp/lighthorizon/index"
 	"github.com/stellar/go/support/errors"
 	"github.com/stellar/go/support/log"
 )
 
-var (
-	// Should we use runtime.NumCPU() for a reasonable default?
-	workerCount = uint32(16)
-)
-
 const (
 	ACCOUNT_FLUSH_FREQUENCY = 200
+	// arbitrary default, should we use runtime.NumCPU()?
+	DEFAULT_WORKER_COUNT = 2
 )
 
 type ReduceConfig struct {
@@ -29,12 +26,15 @@ type ReduceConfig struct {
 	ReduceJobCount  uint32
 	IndexTarget     string
 	IndexRootSource string
+
+	Workers uint32
 }
 
 func ReduceConfigFromEnvironment() (*ReduceConfig, error) {
 	const (
 		mapJobsEnv          = "MAP_JOB_COUNT"
 		reduceJobsEnv       = "REDUCE_JOB_COUNT"
+		workerCountEnv      = "WORKER_COUNT"
 		jobIndexEnv         = "AWS_BATCH_JOB_ARRAY_INDEX"
 		mappedIndicesUrlEnv = "INDEX_SOURCE_ROOT"
 		finalIndexUrlEnv    = "INDEX_TARGET"
@@ -53,6 +53,15 @@ func ReduceConfigFromEnvironment() (*ReduceConfig, error) {
 		return nil, errors.Wrap(err, "invalid parameter "+reduceJobsEnv)
 	}
 
+	workers := os.Getenv(workerCountEnv)
+	if workers == "" {
+		workers = strconv.FormatUint(DEFAULT_WORKER_COUNT, 10)
+	}
+	workerCount, err := strconv.ParseUint(workers, 10, 32)
+	if err != nil {
+		return nil, errors.Wrap(err, "invalid parameter "+workerCountEnv)
+	}
+
 	finalIndexUrl := os.Getenv(finalIndexUrlEnv)
 	if finalIndexUrl == "" {
 		return nil, errors.New("required parameter missing " + finalIndexUrlEnv)
@@ -67,6 +76,7 @@ func ReduceConfigFromEnvironment() (*ReduceConfig, error) {
 		JobIndex:        uint32(jobIndex),
 		MapJobCount:     uint32(mapJobs),
 		ReduceJobCount:  uint32(reduceJobs),
+		Workers:         uint32(workerCount),
 		IndexTarget:     finalIndexUrl,
 		IndexRootSource: mappedIndicesUrl,
 	}, nil
@@ -116,7 +126,7 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 
 		log.Info("Outer job ", i, " accounts ", len(accounts))
 
-		ch := make(chan string, workerCount)
+		ch := make(chan string, config.Workers)
 		go func() {
 			for _, account := range accounts {
 				if doneAccounts.Contains(account) {
@@ -130,8 +140,8 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 
 		// TODO: errgroup.WithContext(ctx)
 		var wg sync.WaitGroup
-		wg.Add(int(workerCount))
-		for j := uint32(0); j < workerCount; j++ {
+		wg.Add(int(config.Workers))
+		for j := uint32(0); j < config.Workers; j++ {
 			go func(routineIndex uint32) {
 				defer wg.Done()
 				logger := log.WithField("worker", i).WithField("routine", routineIndex)
@@ -147,7 +157,7 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 
 					if !shouldAccountBeProcessed(account,
 						config.JobIndex, config.ReduceJobCount,
-						routineIndex, workerCount,
+						routineIndex, config.Workers,
 					) {
 						accountsSkipped++
 						continue
