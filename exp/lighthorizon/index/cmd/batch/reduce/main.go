@@ -302,7 +302,7 @@ func shouldTransactionBeProcessed(transactionPrefix byte,
 	jobIndex, jobCount uint32,
 	routineIndex, routineCount uint32,
 ) bool {
-	hashLeft := uint32(transactionPrefix & 0xF0)
+	hashLeft := uint32(transactionPrefix >> 4)
 	hashRight := uint32(0x0F & transactionPrefix)
 
 	// Because the transaction hash (and thus the first byte or "prefix") is a
