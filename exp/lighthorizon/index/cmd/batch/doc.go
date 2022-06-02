@@ -27,8 +27,8 @@
 // account index was processed earlier it should be skipped instead of being
 // processed again. Each reduce job also runs multiple parallel workers. Finally
 // the method that is used to determine if the following (job, worker) should
-// process a given account is using a 64-bit hash of account ID. The hash is
-// split into two 32-bit parts: left and right. If the left part modulo
+// process a given account is using a 32-bit hash of account ID. The hash is
+// split into two 16-bit parts: left and right. If the left part modulo
 // REDUCE_JOBS is equal the job index and the right part modulo a number of
 // parallel workers is equal the worker index then the account is processed.
 // Otherwise it's skipped (and will be picked by another (job, worker) pair).
@@ -41,7 +41,7 @@
 //     |
 //     ㄴ job0/...       <- ...and partial indexes
 //
-//     hash(account_id) => XXXX YYYY <-  64 bit hash of account id is calculated
+//     hash(account_id) => XXXX YYYY <-  32 bit hash of account id is calculated
 //
 //     if XXXX % REDUCE_JOBS == JOB_ID and YYYY % WORKERS_COUNT = WORKER_ID
 //     then process a given account by merging all indexes of a given account
