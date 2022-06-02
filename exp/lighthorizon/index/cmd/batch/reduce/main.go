@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/stellar/go/exp/lighthorizon/index"
 	"github.com/stellar/go/support/errors"
@@ -94,6 +93,7 @@ func main() {
 		panic(err)
 	}
 
+	log.Infof("Connecting to %s", config.IndexTarget)
 	finalIndexStore, err := index.Connect(config.IndexTarget)
 	if err != nil {
 		panic(errors.Wrapf(err, "failed to connect to indices at %s",
@@ -177,17 +177,12 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 								accountsProcessed+accountsSkipped, len(accounts))
 					}
 
-					if !shouldAccountBeProcessed(account,
-						config.JobIndex, config.ReduceJobCount,
-						routineIndex, config.Workers,
-					) {
-						// logger.Debugf("Skipping '%s'", account)
-						accountsSkipped++
-						continue
-					}
+					logger.Infof("Reading index for account: %s", account)
 
-					logger.Debugf("Reading indices for account '%s'", account)
-					outerAccountIndices, err := outerJobStore.Read(account)
+					// First, open the "final merged indices" at the root level
+					// for this account.
+					mergedIndices, err := outerJobStore.Read(account)
+
 					// TODO: in final version this should be critical error, now just skip it
 					if os.IsNotExist(err) {
 						logger.Errorf("Account %s is unavailable - TODO fix", account)
@@ -196,55 +191,60 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 						panic(err)
 					}
 
-					for k := uint32(i); k <= config.MapJobCount; k++ {
+					// Then, iterate through all of the job folders and merge
+					// indices from all jobs that touched this account.
+					for k := uint32(0); k < config.MapJobCount; k++ {
 						url := filepath.Join(config.IndexRootSource, fmt.Sprintf("job_%d", k))
+
+						// FIXME: This could probably come from a pool. Every
+						// worker needs to have a connection to every index
+						// store, so there's no reason to re-open these for each
+						// inner loop.
 						innerJobStore, err := index.Connect(url)
 						if err != nil {
-							logger.Errorf("Failed to connect to indices at %s: %v", url, err)
+							logger.WithError(err).
+								Errorf("Failed to open index at %s")
 							panic(err)
 						}
 
-						innerAccountIndices, err := innerJobStore.Read(account)
+						jobIndices, err := innerJobStore.Read(account)
+						// This job never touched this account; skip.
 						if os.IsNotExist(err) {
 							continue
 						} else if err != nil {
-							logger.Errorf("Failed to read indices: %v", err)
+							logger.WithError(err).
+								Errorf("Failed to read index for %s", account)
 							panic(err)
 						}
 
-						for name, index := range outerAccountIndices {
-							innerIndices, ok := innerAccountIndices[name]
-							if !ok || innerIndices == nil {
-								continue
-							}
-
-							if err := index.Merge(innerIndices); err != nil {
-								logger.Errorf("Failed to merge indices for %s: %v", name, err)
-								panic(err)
-							}
+						if err := mergeIndices(mergedIndices, jobIndices); err != nil {
+							logger.WithError(err).
+								Errorf("Merge failure for index at %s", url)
+							panic(err)
 						}
 					}
 
-					// Save merged index
-					finalIndexStore.AddParticipantToIndexesNoBackend(account, outerAccountIndices)
+					// Finally, save the merged index.
+					finalIndexStore.AddParticipantToIndexesNoBackend(account, mergedIndices)
 
-					// Mark account as done
+					// Mark this account for other workers to ignore.
 					doneAccounts.Add(account)
 					accountsProcessed++
+					logger = logger.WithField("processed", accountsProcessed)
 
+					// Periodically flush to disk to save memory.
 					if accountsProcessed%ACCOUNT_FLUSH_FREQUENCY == 0 {
-						logger.Infof("Flushing %d indexed accounts.", accountsProcessed)
-
+						logger.Infof("Flushing indexed accounts.")
 						if err = finalIndexStore.Flush(); err != nil {
-							logger.WithField("error", err).Errorf("Flush error.")
+							logger.WithError(err).Errorf("Flush error.")
 							panic(err)
 						}
 					}
 				}
 
-				logger.Infof("Final account flush (%d processed)...", accountsProcessed)
+				logger.Infof("Final account flush.")
 				if err = finalIndexStore.Flush(); err != nil {
-					logger.WithField("error", err).Errorf("Flush error.")
+					logger.WithError(err).Errorf("Flush error.")
 					panic(err)
 				}
 
