@@ -11,6 +11,7 @@ import (
 	"github.com/stellar/go/historyarchive"
 	"github.com/stellar/go/ingest"
 	"github.com/stellar/go/ingest/ledgerbackend"
+	"github.com/stellar/go/support/errors"
 	"github.com/stellar/go/support/log"
 	"github.com/stellar/go/toid"
 	"github.com/stellar/go/xdr"
@@ -67,7 +68,7 @@ func BuildIndices(
 	wg, ctx := errgroup.WithContext(ctx)
 	ch := make(chan historyarchive.Range, parallel)
 
-	indexBuilder := NewIndexBuilder(indexStore, *ledgerBackend, networkPassphrase)
+	indexBuilder := NewIndexBuilder(indexStore, ledgerBackend, networkPassphrase)
 	for _, part := range modules {
 		switch part {
 		case "transactions":
@@ -112,11 +113,8 @@ func BuildIndices(
 					ledgerRange.Low, ledgerRange.High)
 
 				// Assertion for testing
-				if ledgerRange.High != endLedger &&
-					(ledgerRange.High+1)%64 != 0 {
-					log.Fatalf(
-						"Uh oh, upper ledger isn't a checkpoint (%+v)",
-						ledgerRange)
+				if ledgerRange.High != endLedger && (ledgerRange.High+1)%64 != 0 {
+					log.Fatalf("Upper ledger isn't a checkpoint: %v", ledgerRange)
 				}
 
 				err = indexBuilder.Build(ctx, ledgerRange)
@@ -124,12 +122,11 @@ func BuildIndices(
 					return err
 				}
 
-				PrintProgress("Reading ledgers",
-					nprocessed, uint64(ledgerCount), startTime)
+				printProgress("Reading ledgers", nprocessed, uint64(ledgerCount), startTime)
 
 				// Upload indices once per checkpoint to save memory
 				if err := indexStore.Flush(); err != nil {
-					return err
+					return errors.Wrap(err, "flushing indices failed")
 				}
 			}
 			return nil
@@ -137,11 +134,10 @@ func BuildIndices(
 	}
 
 	if err := wg.Wait(); err != nil {
-		return err
+		return errors.Wrap(err, "one or more workers failed")
 	}
 
-	PrintProgress("Reading ledgers",
-		uint64(ledgerCount), uint64(ledgerCount), startTime)
+	printProgress("Reading ledgers", uint64(ledgerCount), uint64(ledgerCount), startTime)
 
 	// Assertion for testing
 	if processed != uint64(ledgerCount) {
@@ -150,15 +146,16 @@ func BuildIndices(
 
 	log.Infof("Processed %d ledgers via %d workers", processed, parallel)
 	log.Infof("Uploading indices to %s", targetUrl)
-	if err := indexStore.FlushAccounts(); err != nil {
-		return err
+	if err := indexStore.Flush(); err != nil {
+		return errors.Wrap(err, "flushing indices failed")
 	}
-	return indexStore.Flush()
+
+	return nil
 }
 
 // Module is a way to process ingested data and shove it into an index store.
 type Module func(
-	idx Store,
+	indexStore Store,
 	ledger xdr.LedgerCloseMeta,
 	transaction ingest.LedgerTransaction,
 ) error
@@ -166,7 +163,7 @@ type Module func(
 // IndexBuilder contains everything needed to build indices from ledger ranges.
 type IndexBuilder struct {
 	store             Store
-	history           ledgerbackend.HistoryArchiveBackend
+	history           *ledgerbackend.HistoryArchiveBackend
 	networkPassphrase string
 
 	modules []Module
@@ -174,7 +171,7 @@ type IndexBuilder struct {
 
 func NewIndexBuilder(
 	indexStore Store,
-	backend ledgerbackend.HistoryArchiveBackend,
+	backend *ledgerbackend.HistoryArchiveBackend,
 	networkPassphrase string,
 ) *IndexBuilder {
 	return &IndexBuilder{
@@ -456,6 +453,9 @@ func participantsForOperations(transaction ingest.LedgerTransaction, onlyPayment
 		// }
 	}
 
+	// FIXME: This could probably be a set rather than a list, since there's no
+	// reason to track a participating account more than once if they are
+	// participants across multiple operations.
 	return participants, nil
 }
 
@@ -479,7 +479,7 @@ func getLedgerKeyParticipants(ledgerKey xdr.LedgerKey) []string {
 	return []string{}
 }
 
-func PrintProgress(prefix string, done, total uint64, startTime time.Time) {
+func printProgress(prefix string, done, total uint64, startTime time.Time) {
 	// This should never happen, more of a runtime assertion for now.
 	// We can remove it when production-ready.
 	if done > total {
