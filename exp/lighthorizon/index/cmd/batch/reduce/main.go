@@ -115,13 +115,12 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 		}
 
 		accounts, err := outerJobStore.ReadAccounts()
-		if err != nil {
-			// TODO: in final version this should be critical error, now just skip it
-			if err == os.ErrNotExist {
-				log.Errorf("Job %d is unavailable - TODO fix", i)
-				continue
-			}
-			return errors.Wrapf(err, "failed to read accounts for job %d", i)
+		// TODO: in final version this should be critical error, now just skip it
+		if os.IsNotExist(err) {
+			logger.Errorf("accounts file not found (TODO!)")
+			continue
+		} else if err != nil {
+			return errors.Wrapf(err, "failed to read accounts for worker %d", i)
 		}
 
 		log.Info("Outer job ", i, " accounts ", len(accounts))
@@ -129,7 +128,7 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 		ch := make(chan string, config.Workers)
 		go func() {
 			for _, account := range accounts {
-				if doneAccounts.Contains(account) {
+				if doneAccounts.Contains(account) || account == "" {
 					// Account index already merged in the previous outer job
 					continue
 				}
@@ -164,12 +163,11 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 					}
 
 					outerAccountIndices, err := outerJobStore.Read(account)
-					if err != nil {
-						// TODO: in final version this should be critical error, now just skip it
-						if err == os.ErrNotExist {
-							logger.Errorf("Account %s is unavailable - TODO fix", account)
-							continue
-						}
+					// TODO: in final version this should be critical error, now just skip it
+					if os.IsNotExist(err) {
+						logger.Errorf("Account %s is unavailable - TODO fix", account)
+						continue
+					} else if err != nil {
 						panic(err)
 					}
 
@@ -182,7 +180,7 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 						}
 
 						innerAccountIndices, err := innerJobStore.Read(account)
-						if err == os.ErrNotExist {
+						if os.IsNotExist(err) {
 							continue
 						} else if err != nil {
 							logger.Errorf("Failed to read indices: %v", err)
