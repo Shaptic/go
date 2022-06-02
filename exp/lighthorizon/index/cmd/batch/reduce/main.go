@@ -287,36 +287,56 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 	return nil
 }
 
-func shouldAccountBeProcessed(account string,
-	jobIndex, jobCount uint32,
-	routineIndex, routineCount uint32,
-) bool {
+func (cfg *ReduceConfig) shouldProcessAccount(account string, routineIndex uint32) bool {
 	hash := fnv.New64a()
 
 	// Docs state (https://pkg.go.dev/hash#Hash) that Write will never error.
 	hash.Write([]byte(account))
 	digest := uint32(hash.Sum64()) // discard top 32 bits
 
-	leftHalf := digest >> 4
+	leftHalf := digest >> 16
 	rightHalf := digest & 0x0000FFFF
+
+	log.WithField("worker", routineIndex).
+		WithField("account", account).
+		Debugf("Hash: %d (left=%d, right=%d)", digest, leftHalf, rightHalf)
 
 	// Because the digest is basically a random number (given a good hash
 	// function), its remainders w.r.t. the indices will distribute the work
 	// fairly (and deterministically).
-	return leftHalf%jobCount == jobIndex &&
-		rightHalf%routineCount == routineIndex
+	return leftHalf%cfg.ReduceJobCount == cfg.JobIndex &&
+		rightHalf%cfg.Workers == routineIndex
 }
 
-func shouldTransactionBeProcessed(transactionPrefix byte,
-	jobIndex, jobCount uint32,
-	routineIndex, routineCount uint32,
-) bool {
+func (cfg *ReduceConfig) shouldProcessTx(txPrefix byte, routineIndex uint32) bool {
 	hashLeft := uint32(transactionPrefix >> 4)
-	hashRight := uint32(0x0F & transactionPrefix)
+	hashRight := uint32(transactionPrefix & 0x0F)
 
 	// Because the transaction hash (and thus the first byte or "prefix") is a
 	// random value, its remainders w.r.t. the indices will distribute the work
 	// fairly (and deterministically).
-	return hashRight%jobCount == jobIndex &&
-		hashLeft%routineCount == routineIndex
+	return hashRight%cfg.ReduceJobCount == cfg.JobIndex &&
+		hashLeft%cfg.Workers == routineIndex
+}
+
+// For every index that exists in `dest`, finds the corresponding index in
+// `source` and merges it into `dest`'s version.
+func mergeIndices(dest, source map[string]*index.CheckpointIndex) error {
+	for name, index := range dest {
+		// The source doesn't contain this particular index.
+		//
+		// This probably shouldn't happen, since during the Map step, there's no
+		// way to choose which indices you want, but, strictly-speaking, it's
+		// not an error, so we can just move on.
+		innerIndices, ok := source[name]
+		if !ok || innerIndices == nil {
+			continue
+		}
+
+		if err := index.Merge(innerIndices); err != nil {
+			return errors.Wrapf(err, "failed to merge index for %s", name)
+		}
+	}
+
+	return nil
 }
