@@ -2,11 +2,13 @@ package index
 
 import (
 	"compress/gzip"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/stellar/go/support/errors"
 	"github.com/stellar/go/support/log"
 )
 
@@ -37,7 +39,7 @@ func (s *FileBackend) Flush(indexes map[string]map[string]*CheckpointIndex) erro
 func (s *FileBackend) FlushAccounts(accounts []string) error {
 	path := filepath.Join(s.dir, "accounts")
 
-	accountsString := strings.Join(accounts, "\n")
+	accountsString := strings.Join(accounts, "\n") + "\n" // trailing newline
 	return os.WriteFile(path, []byte(accountsString), fs.ModeDir|0755)
 }
 
@@ -122,7 +124,21 @@ func (s *FileBackend) Read(account string) (map[string]*CheckpointIndex, error) 
 }
 
 func (s *FileBackend) ReadAccounts() ([]string, error) {
-	panic("TODO")
+	path := filepath.Join(s.dir, "accounts")
+	log.Debugf("Opening accounts list at %s", path)
+
+	// This file probably isn't insurmountably large (TODO: Confirm that), so we
+	// can probably read it all in one go.
+	buffer, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, err
+	} else if err != nil {
+		return nil, errors.Wrapf(err, "failed to read %s", path)
+	} else if len(buffer) == 0 {
+		return nil, fmt.Errorf("account list at %s is empty", path)
+	}
+
+	return strings.Split(string(buffer), "\n"), nil
 }
 
 func (s *FileBackend) ReadTransactions(prefix string) (*TrieIndex, error) {
