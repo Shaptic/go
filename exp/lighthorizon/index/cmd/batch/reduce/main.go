@@ -108,7 +108,7 @@ func main() {
 func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 	doneAccounts := NewSafeStringSet()
 	for i := uint32(0); i < config.MapJobCount; i++ {
-		logger := log.WithField("worker", i)
+		logger := log.WithField("job", i)
 
 		url := filepath.Join(config.IndexRootSource, "job_"+strconv.FormatUint(uint64(i), 10))
 		logger.Infof("Connecting to %s", url)
@@ -124,22 +124,36 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 			logger.Errorf("accounts file not found (TODO!)")
 			continue
 		} else if err != nil {
-			return errors.Wrapf(err, "failed to read accounts for worker %d", i)
+			return errors.Wrapf(err, "failed to read accounts for job %d", i)
 		}
 
-		logger.Info("Accounts to process: ", len(accounts))
+		logger.Infof("Processing %d accounts with %d workers",
+			len(accounts), config.Workers)
 
-		ch := make(chan string, config.Workers)
-		go func() {
-			for _, account := range accounts {
-				if doneAccounts.Contains(account) || account == "" {
-					// Account index already merged in the previous outer job
-					continue
+		workQueues := make([]chan string, config.Workers)
+		for i, _ := range workQueues {
+			workQueues[i] = make(chan string, 1)
+		}
+
+		for idx, queue := range workQueues {
+			go (func(index uint32, queue chan string) {
+				for _, account := range accounts {
+					// Account index already merged in the previous outer job?
+					if doneAccounts.Contains(account) {
+						continue
+					}
+
+					// Account doesn't belong in this work queue?
+					if config.shouldProcessAccount(account, index) {
+						continue
+					}
+
+					queue <- account
 				}
-				ch <- account
-			}
-			close(ch)
-		}()
+
+				close(queue)
+			})(uint32(idx), queue)
+		}
 
 		// TODO: errgroup.WithContext(ctx)
 		var wg sync.WaitGroup
@@ -147,16 +161,18 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 		for j := uint32(0); j < config.Workers; j++ {
 			go func(routineIndex uint32) {
 				defer wg.Done()
-				logger := log.WithField("worker", i).WithField("routine", routineIndex)
-				logger.Info("Processing accounts...")
+				logger := logger.
+					WithField("worker", routineIndex).
+					WithField("total", len(accounts))
+				logger.Info("Started worker")
 
 				var accountsProcessed, accountsSkipped uint64
-				for account := range ch {
+				for account := range workQueues[routineIndex] {
+					logger.Infof("Account: %s", account)
 					if (accountsProcessed+accountsSkipped)%97 == 0 {
 						logger.
 							WithField("indexed", accountsProcessed).
 							WithField("skipped", accountsSkipped).
-							WithField("total", len(accounts)).
 							Infof("Processed %d/%d accounts",
 								accountsProcessed+accountsSkipped, len(accounts))
 					}
