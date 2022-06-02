@@ -89,7 +89,7 @@ func BuildIndices(
 		nextCheckpoint := (((startLedger / 64) * 64) + 63)
 
 		ledger := startLedger
-		nextLedger := ledger + (nextCheckpoint - startLedger)
+		nextLedger := min(endLedger, ledger+(nextCheckpoint-startLedger))
 		for ledger <= endLedger {
 			chunk := historyarchive.Range{Low: ledger, High: nextLedger}
 			log.Debugf("Submitted [%d, %d] for work", chunk.Low, chunk.High)
