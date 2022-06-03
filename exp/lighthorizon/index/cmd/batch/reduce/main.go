@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"fmt"
 	"hash/fnv"
 	"os"
@@ -251,14 +252,17 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 				// Merge the transaction indexes
 				// There's 256 files, (one for each first byte of the txn hash)
 				var transactionsProcessed, transactionsSkipped uint64
-				for i := byte(0x00); i < 0xff; i++ {
-					logger.Infof("%d transactions processed (%d skipped)",
-						transactionsProcessed, transactionsSkipped)
+				logger = logger.
+					WithField("indexed", transactionsProcessed).
+					WithField("skipped", transactionsSkipped)
 
-					if !shouldTransactionBeProcessed(i,
-						config.JobIndex, config.ReduceJobCount,
-						routineIndex, workerCount,
-					) {
+				for i := byte(0x00); i < 0xff; i++ {
+					if i%97 == 0 {
+						logger.Infof("%d transactions processed (%d skipped)",
+							transactionsProcessed, transactionsSkipped)
+					}
+
+					if !config.shouldProcessTx(i, routineIndex) {
 						transactionsSkipped++
 						continue
 					}
@@ -267,23 +271,23 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 					prefix := hex.EncodeToString([]byte{i})
 
 					for k := uint32(0); k < config.MapJobCount; k++ {
-						url := path.Join(config.IndexRootSource, fmt.Sprintf("job_%d", k))
+						url := filepath.Join(config.IndexRootSource, fmt.Sprintf("job_%d", k))
 						innerJobStore, err := index.Connect(url)
 						if err != nil {
-							logger.Errorf("Error connecting to indices at %s", url)
+							logger.WithError(err).Errorf("Failed to open index at %s", url)
 							panic(err)
 						}
 
 						innerTxnIndexes, err := innerJobStore.ReadTransactions(prefix)
-						if err == os.ErrNotExist {
+						if os.IsNotExist(err) {
 							continue
 						} else if err != nil {
-							logger.Errorf("Error reading transactions: %v", err)
+							logger.WithError(err).Error("Error reading tx prefix %s", prefix)
 							panic(err)
 						}
 
 						if err := finalIndexStore.MergeTransactions(prefix, innerTxnIndexes); err != nil {
-							logger.Errorf("Error merging transactions: %v", err)
+							logger.WithError(err).Errorf("Error merging txs at prefix %s", prefix)
 							panic(err)
 						}
 					}

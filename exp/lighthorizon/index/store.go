@@ -83,6 +83,9 @@ func (s *store) MergeTransactions(prefix string, other *TrieIndex) error {
 	if err := index.Merge(other); err != nil {
 		return err
 	}
+
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	s.txIndexes[prefix] = index
 	return nil
 }
