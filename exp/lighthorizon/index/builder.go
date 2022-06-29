@@ -58,11 +58,12 @@ func BuildIndices(
 	defer ledgerBackend.Close()
 
 	if ledgerRange.High == 0 {
-		var backendErr error
-		ledgerRange.High, backendErr = ledgerBackend.GetLatestLedgerSequence(ctx)
+		latestLedger, backendErr := ledgerBackend.GetLatestLedgerSequence(ctx)
 		if backendErr != nil {
 			return nil, backendErr
 		}
+		L.Infof("Upper ledger bound unspecified, using latest available ledger: %d", latestLedger)
+		ledgerRange.High = latestLedger
 	}
 
 	if ledgerRange.High < ledgerRange.Low {
@@ -128,7 +129,7 @@ func BuildIndices(
 
 				nprocessed := atomic.AddUint64(&processed, uint64(count))
 				if nprocessed%19 == 0 {
-					printProgress("Reading ledgers", nprocessed, uint64(ledgerCount), startTime)
+					printProgress("Building indices", nprocessed, uint64(ledgerCount), startTime)
 				}
 
 				// Upload indices once per checkpoint to save memory
@@ -144,8 +145,7 @@ func BuildIndices(
 		return indexBuilder, errors.Wrap(err, "one or more workers failed")
 	}
 
-	printProgress("Reading ledgers", processed, uint64(ledgerCount), startTime)
-
+	printProgress("Building indices", processed, uint64(ledgerCount), startTime)
 	L.Infof("Processed %d ledgers via %d workers", processed, parallel)
 	L.Infof("Uploading indices to %s", targetUrl)
 	if err := indexStore.Flush(); err != nil {
@@ -223,6 +223,8 @@ func (builder *IndexBuilder) Build(ctx context.Context, ledgerRange historyarchi
 		if err != nil {
 			if !os.IsNotExist(err) {
 				log.Errorf("error getting ledger %d: %v", ledgerSeq, err)
+			} else {
+				log.Warnf("ledger %d missing", ledgerSeq)
 			}
 			return err
 		}
@@ -230,7 +232,7 @@ func (builder *IndexBuilder) Build(ctx context.Context, ledgerRange historyarchi
 		reader, err := ingest.NewLedgerTransactionReaderFromLedgerCloseMeta(
 			builder.networkPassphrase, ledger)
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "error reading ledger %d", ledgerSeq)
 		}
 
 		for {
@@ -238,11 +240,11 @@ func (builder *IndexBuilder) Build(ctx context.Context, ledgerRange historyarchi
 			if err == io.EOF {
 				break
 			} else if err != nil {
-				return err
+				return errors.Wrapf(err, "error reading ledger %d", ledgerSeq)
 			}
 
 			if err := builder.RunModules(ledger, tx); err != nil {
-				return err
+				return errors.Wrapf(err, "modules failed on ledger %d, tx %d", ledgerSeq, tx.Index)
 			}
 		}
 	}
@@ -281,7 +283,8 @@ func (builder *IndexBuilder) Watch(ctx context.Context) error {
 		//  preferring this over doing proper filesystem monitoring (e.g.
 		//  fsnotify for on-disk). Essentially, supporting this for every
 		//  possible index backend is a non-trivial amount of work with an
-		//  uncertain payoff.
+		//  uncertain payoff, since it's unclear if real-time indexing is a
+		//  meaningful value-add.
 		//
 		// [1]: https://stellarfoundation.slack.com/archives/C02B04RMK/p1654903342555669
 
@@ -310,7 +313,7 @@ func (builder *IndexBuilder) Watch(ctx context.Context) error {
 
 				if os.IsNotExist(buildErr) {
 					time.Sleep(sleepTime)
-					sleepTime += 2
+					sleepTime += 2 * time.Second // linear backoff
 					continue
 				}
 
@@ -324,9 +327,9 @@ func printProgress(prefix string, done, total uint64, startTime time.Time) {
 	progress := float64(done) / float64(total)
 	elapsed := time.Since(startTime)
 
-	// Approximate based on how many ledgers are left and how long this much
+	// Approximate based on how many values are left and how long this much
 	// progress took, e.g. if 4/10 took 2s then 6/10 will "take" 3s (though this
-	// assumes consistent ledger load).
+	// assumes consistent load on the "unit" here).
 	remaining := (float64(elapsed) / float64(done)) * float64(total-done)
 
 	var remainingStr string

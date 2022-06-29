@@ -104,11 +104,16 @@ func main() {
 }
 
 func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
-	doneAccounts := NewSafeStringSet()
-	for i := uint32(0); i < config.MapJobCount; i++ {
-		jobLogger := log.WithField("job", i)
+	jobPaths := make([]string, config.MapJobCount)
+	for i := range jobPaths {
+		jobPaths[i] = filepath.Join(
+			config.IndexRootSource,
+			"job_"+strconv.FormatUint(uint64(i), 10))
+	}
 
-		url := filepath.Join(config.IndexRootSource, "job_"+strconv.FormatUint(uint64(i), 10))
+	doneAccounts := NewSafeStringSet()
+	for i, url := range jobPaths {
+		jobLogger := log.WithField("job", i)
 		jobLogger.Infof("Connecting to %s", url)
 
 		outerJobStore, err := index.Connect(url)
@@ -117,11 +122,7 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 		}
 
 		accounts, err := outerJobStore.ReadAccounts()
-		// TODO: in final version this should be critical error, now just skip it
-		if os.IsNotExist(err) {
-			jobLogger.Errorf("accounts file not found (TODO!)")
-			continue
-		} else if err != nil {
+		if err != nil {
 			return errors.Wrapf(err, "failed to read accounts for job %d", i)
 		}
 
@@ -159,49 +160,46 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 		for j := uint32(0); j < config.Workers; j++ {
 			go func(routineIndex uint32) {
 				defer wg.Done()
-				logger := jobLogger.
+				accountLog := jobLogger.
 					WithField("worker", routineIndex).
 					WithField("total", len(accounts))
-				logger.Info("Started worker")
+				accountLog.Info("Started worker")
 
 				var accountsProcessed, accountsSkipped uint64
 				for account := range workQueues[routineIndex] {
-					logger.Infof("Account: %s", account)
+					accountLog.
+						WithField("total", len(accounts)).
+						WithField("indexed", accountsProcessed).
+						WithField("skipped", accountsSkipped)
+
 					if (accountsProcessed+accountsSkipped)%97 == 0 {
-						logger.
+						accountLog.
 							WithField("indexed", accountsProcessed).
 							WithField("skipped", accountsSkipped).
 							Infof("Processed %d/%d accounts",
 								accountsProcessed+accountsSkipped, len(accounts))
 					}
 
-					logger.Infof("Reading index for account: %s", account)
-
 					// First, open the "final merged indices" at the root level
 					// for this account.
-					mergedIndices, mergeErr := outerJobStore.Read(account)
-
-					// TODO: in final version this should be critical error, now just skip it
-					if os.IsNotExist(mergeErr) {
-						logger.Errorf("Account %s is unavailable - TODO fix", account)
+					accountLog.Debugf("Reading index for account: %s", account)
+					mergedIndices, readErr := outerJobStore.Read(account)
+					if os.IsNotExist(readErr) {
+						accountLog.Errorf("Account %s is unavailable - TODO fix", account)
 						continue
-					} else if mergeErr != nil {
-						panic(mergeErr)
+					} else if readErr != nil {
+						accountLog.WithError(readErr).
+							Errorf("reading indices for account %s failed", account)
+						panic(readErr)
 					}
 
 					// Then, iterate through all of the job folders and merge
 					// indices from all jobs that touched this account.
-					for k := uint32(0); k < config.MapJobCount; k++ {
-						url := filepath.Join(config.IndexRootSource, fmt.Sprintf("job_%d", k))
-
-						// FIXME: This could probably come from a pool. Every
-						// worker needs to have a connection to every index
-						// store, so there's no reason to re-open these for each
-						// inner loop.
-						innerJobStore, indexErr := index.Connect(url)
+					for _, innerUrl := range jobPaths {
+						innerJobStore, indexErr := index.Connect(innerUrl)
 						if indexErr != nil {
-							logger.WithError(indexErr).
-								Errorf("Failed to open index at %s", url)
+							accountLog.WithError(indexErr).
+								Errorf("Failed to open index at %s", innerUrl)
 							panic(indexErr)
 						}
 
@@ -210,13 +208,13 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 						if os.IsNotExist(innerJobErr) {
 							continue
 						} else if innerJobErr != nil {
-							logger.WithError(innerJobErr).
+							accountLog.WithError(innerJobErr).
 								Errorf("Failed to read index for %s", account)
 							panic(innerJobErr)
 						}
 
 						if mergeIndexErr := mergeIndices(mergedIndices, jobIndices); mergeIndexErr != nil {
-							logger.WithError(mergeIndexErr).
+							accountLog.WithError(mergeIndexErr).
 								Errorf("Merge failure for index at %s", url)
 							panic(mergeIndexErr)
 						}
@@ -228,34 +226,37 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 					// Mark this account for other workers to ignore.
 					doneAccounts.Add(account)
 					accountsProcessed++
-					logger = logger.WithField("processed", accountsProcessed)
+					accountLog = accountLog.
+						WithField("indexed", accountsProcessed).
+						WithField("skipped", accountsSkipped)
 
 					// Periodically flush to disk to save memory.
 					if accountsProcessed%ACCOUNT_FLUSH_FREQUENCY == 0 {
-						logger.Infof("Flushing indexed accounts.")
+						accountLog.Infof("Flushing indexed accounts.")
 						if err = finalIndexStore.Flush(); err != nil {
-							logger.WithError(err).Errorf("Flush error.")
+							accountLog.WithError(err).Errorf("Flush error.")
 							panic(err)
 						}
 					}
 				}
 
-				jobLogger.Infof("Final account flush.")
+				accountLog.Infof("Final account flush.")
 				if err = finalIndexStore.Flush(); err != nil {
-					logger.WithError(err).Errorf("Flush error.")
+					accountLog.WithError(err).Errorf("Flush error.")
 					panic(err)
 				}
 
 				// Merge the transaction indexes
 				// There's 256 files, (one for each first byte of the txn hash)
 				var transactionsProcessed, transactionsSkipped uint64
-				logger = jobLogger.
+				txLog := jobLogger.
+					WithField("worker", routineIndex).
 					WithField("indexed", transactionsProcessed).
 					WithField("skipped", transactionsSkipped)
 
 				for i := byte(0x00); i < 0xff; i++ {
 					if i%97 == 0 {
-						logger.Infof("%d transactions processed (%d skipped)",
+						txLog.Infof("%d transactions processed (%d skipped)",
 							transactionsProcessed, transactionsSkipped)
 					}
 
@@ -271,28 +272,28 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 						url := filepath.Join(config.IndexRootSource, fmt.Sprintf("job_%d", k))
 						innerJobStore, jobErr := index.Connect(url)
 						if jobErr != nil {
-							logger.WithError(jobErr).Errorf("Failed to open index at %s", url)
+							txLog.WithError(jobErr).Errorf("Failed to open index at %s", url)
 							panic(jobErr)
 						}
 
 						innerTxnIndexes, innerJobErr := innerJobStore.ReadTransactions(prefix)
-						if os.IsNotExist(innerJobErr) {
+						if os.IsNotExist(innerJobErr) { // none present in this store
 							continue
 						} else if innerJobErr != nil {
-							logger.WithError(innerJobErr).Errorf("Error reading tx prefix %s", prefix)
+							txLog.WithError(innerJobErr).Errorf("Error reading tx prefix %s", prefix)
 							panic(innerJobErr)
 						}
 
 						if prefixErr := finalIndexStore.MergeTransactions(prefix, innerTxnIndexes); err != nil {
-							logger.WithError(prefixErr).Errorf("Error merging txs at prefix %s", prefix)
+							txLog.WithError(prefixErr).Errorf("Error merging txs at prefix %s", prefix)
 							panic(prefixErr)
 						}
 					}
 				}
 
-				jobLogger.Infof("Final transaction flush (%d processed)", transactionsProcessed)
+				txLog.Infof("Final transaction flush (%d processed)", transactionsProcessed)
 				if err = finalIndexStore.Flush(); err != nil {
-					logger.Errorf("Error flushing transactions: %v", err)
+					txLog.Errorf("Error flushing transactions: %v", err)
 					panic(err)
 				}
 			}(j)
@@ -306,9 +307,7 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 
 func (cfg *ReduceConfig) shouldProcessAccount(account string, routineIndex uint32) bool {
 	hash := fnv.New64a()
-
-	// Docs state (https://pkg.go.dev/hash#Hash) that Write will never error.
-	hash.Write([]byte(account))
+	hash.Write([]byte(account))    // never errors: https://pkg.go.dev/hash#Hash
 	digest := uint32(hash.Sum64()) // discard top 32 bits
 
 	leftHalf := digest >> 16
@@ -340,12 +339,13 @@ func (cfg *ReduceConfig) shouldProcessTx(txPrefix byte, routineIndex uint32) boo
 // `source` and merges it into `dest`'s version.
 func mergeIndices(dest, source map[string]*types.CheckpointIndex) error {
 	for name, index := range dest {
+		innerIndices, ok := source[name]
+
 		// The source doesn't contain this particular index.
 		//
 		// This probably shouldn't happen, since during the Map step, there's no
 		// way to choose which indices you want, but, strictly-speaking, it's
 		// not an error, so we can just move on.
-		innerIndices, ok := source[name]
 		if !ok || innerIndices == nil {
 			continue
 		}
