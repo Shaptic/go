@@ -253,19 +253,20 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 					WithField("indexed", transactionsProcessed).
 					WithField("skipped", transactionsSkipped)
 
-				for i := byte(0x00); i < 0xff; i++ {
+				for i := int(0x00); i <= 0xff; i++ {
+					b := byte(i) // can't loop over range bc overflow
 					if i%97 == 0 {
 						logger.Infof("%d transactions processed (%d skipped)",
 							transactionsProcessed, transactionsSkipped)
 					}
 
-					if !config.shouldProcessTx(i, routineIndex) {
+					if !config.shouldProcessTx(b, routineIndex) {
 						transactionsSkipped++
 						continue
 					}
 					transactionsProcessed++
 
-					prefix := hex.EncodeToString([]byte{i})
+					prefix := hex.EncodeToString([]byte{b})
 
 					for k := uint32(0); k < config.MapJobCount; k++ {
 						url := filepath.Join(config.IndexRootSource, fmt.Sprintf("job_%d", k))
