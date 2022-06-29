@@ -22,6 +22,45 @@ const (
 )
 
 func TestMap(t *testing.T) {
+	RunMapTest(t)
+}
+
+func TestReduce(t *testing.T) {
+	// First, map the index files like we normally would.
+	startLedger, endLedger, jobRoot := RunMapTest(t)
+	batchCount := (endLedger - startLedger + batchSize) / batchSize // ceil(ledgerCount / batchSize)
+
+	// Now that indices have been "map"ped, reduce them to a single store.
+
+	indexTarget := filepath.Join(t.TempDir(), "final-indices")
+	reduceTestCmd := exec.Command("./reduce.sh", jobRoot, indexTarget)
+	t.Logf("Running %d reduce jobs: %s", batchCount, reduceTestCmd.String())
+	stdout, err := reduceTestCmd.CombinedOutput()
+	t.Logf(string(stdout))
+	require.NoError(t, err)
+
+	// Then, build the *same* indices using the single-process tester.
+
+	t.Logf("Building baseline for ledger range [%d, %d]", startLedger, endLedger)
+	hashes, participants := IndexLedgerRange(t, txmetaSource, startLedger, endLedger)
+	require.NotNil(t, hashes)
+	require.NotNil(t, participants)
+
+	// Finally, compare the two to make sure the reduce job did what it's
+	// supposed to do.
+
+	indexStore, err := index.Connect("file://" + indexTarget)
+	require.NoError(t, err)
+	require.NotNil(t, indexStore)
+	stores := []index.Store{indexStore} // to reuse code: same as array of 1 store
+
+	assertParticipantsEqual(t, keysU32(participants), stores)
+	for account, checkpoints := range participants {
+		assertParticipantCheckpointsEqual(t, account, checkpoints, stores)
+	}
+}
+
+func RunMapTest(t *testing.T) (uint32, uint32, string) {
 	// Only file:// style URLs for the txmeta source are allowed while testing.
 	parsed, err := url.Parse(txmetaSource)
 	require.NoErrorf(t, err, "%s is not a valid URL", txmetaSource)
@@ -103,6 +142,8 @@ func TestMap(t *testing.T) {
 	for account, checkpoints := range participants {
 		assertParticipantCheckpointsEqual(t, account, checkpoints, stores)
 	}
+
+	return startLedger, endLedger, tempDir
 }
 
 func assertParticipantsEqual(t *testing.T,
