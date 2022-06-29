@@ -1,6 +1,7 @@
 package main_test
 
 import (
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/url"
@@ -43,21 +44,20 @@ func TestReduce(t *testing.T) {
 
 	t.Logf("Building baseline for ledger range [%d, %d]", startLedger, endLedger)
 	hashes, participants := IndexLedgerRange(t, txmetaSource, startLedger, endLedger)
-	require.NotNil(t, hashes)
-	require.NotNil(t, participants)
 
 	// Finally, compare the two to make sure the reduce job did what it's
 	// supposed to do.
 
 	indexStore, err := index.Connect("file://" + indexTarget)
 	require.NoError(t, err)
-	require.NotNil(t, indexStore)
 	stores := []index.Store{indexStore} // to reuse code: same as array of 1 store
 
 	assertParticipantsEqual(t, keysU32(participants), stores)
 	for account, checkpoints := range participants {
 		assertParticipantCheckpointsEqual(t, account, checkpoints, stores)
 	}
+
+	assertTOIDsEqual(t, hashes, stores)
 }
 
 func RunMapTest(t *testing.T) (uint32, uint32, string) {
@@ -117,8 +117,6 @@ func RunMapTest(t *testing.T) (uint32, uint32, string) {
 	// Then, build the *same* indices using the single-process tester.
 	t.Logf("Building baseline for ledger range [%d, %d]", startLedger, endLedger)
 	hashes, participants := IndexLedgerRange(t, txmetaSource, startLedger, endLedger)
-	require.NotNil(t, hashes)
-	require.NotNil(t, participants)
 
 	// Now, walk through the mapped indices and ensure that at least one of the
 	// jobs reported the same indices for tx TOIDs and participation.
@@ -142,6 +140,8 @@ func RunMapTest(t *testing.T) (uint32, uint32, string) {
 	for account, checkpoints := range participants {
 		assertParticipantCheckpointsEqual(t, account, checkpoints, stores)
 	}
+
+	assertTOIDsEqual(t, hashes, stores)
 
 	return startLedger, endLedger, tempDir
 }
@@ -202,6 +202,31 @@ func assertParticipantCheckpointsEqual(t *testing.T,
 		require.Containsf(t, foundCheckpoints, item,
 			"failed to find %d for %s (found %v)",
 			int(item), account, foundCheckpoints)
+	}
+}
+
+func assertTOIDsEqual(t *testing.T, toids map[string]int64, stores []index.Store) {
+	for hash, toid := range toids {
+		rawHash := [32]byte{}
+		decodedHash, err := hex.DecodeString(hash)
+		require.NoError(t, err)
+		require.Lenf(t, decodedHash, 32, "invalid tx hash length")
+		copy(rawHash[:], decodedHash)
+
+		found := false
+		for i, store := range stores {
+			storeToid, err := store.TransactionTOID(rawHash)
+			if err != nil {
+				require.ErrorIsf(t, err, io.EOF,
+					"only EOF errors are allowed (store %d, hash %s)", i, hash)
+			} else {
+				require.Equalf(t, toid, storeToid,
+					"TOIDs for tx 0x%s don't match (store %d)", hash, i)
+				found = true
+			}
+		}
+
+		require.Truef(t, found, "TOID for tx 0x%s not found in stores", hash)
 	}
 }
 
