@@ -1,4 +1,11 @@
 #!/bin/bash
+# 
+# Combines indices that were built separately in different folders into a single
+# set of indices.
+# 
+# This focuses on starting parallel processes, but the Golang side does
+# validation that the reduce jobs resulted in the correct indices.
+# 
 
 # check parameters and their validity (types, existence, etc.)
 
@@ -18,18 +25,20 @@ if [[ ! -d "$2" ]]; then
     mkdir -p $2
 fi
 
-go build -o reduce ./batch/reduce/...
-if [[ "$?" -ne "0" ]]; then 
-    echo "Build failed"
-    exit 1
-fi
-
 MAP_JOB_COUNT=$(ls $1 | grep -E 'job_[0-9]+' | wc -l)
 if [[ "$MAP_JOB_COUNT" -le "0" ]]; then 
     echo "No jobs in index src root ('$1') found."
     exit 1 
 fi
 REDUCE_JOB_COUNT=$MAP_JOB_COUNT
+
+# build reduce program and start it up
+
+go build -o reduce ./batch/reduce/...
+if [[ "$?" -ne "0" ]]; then 
+    echo "Build failed"
+    exit 1
+fi
 
 echo "Coalescing $MAP_JOB_COUNT discovered job outputs from $1 into $2..."
 
@@ -61,6 +70,6 @@ for i in "${!pids[@]}"; do
     fi
 done
 
-rm ./reduce
+rm ./reduce # cleanup
 echo "All jobs succeeded!"
 exit 0
