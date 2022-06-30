@@ -181,14 +181,14 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 
 					// First, open the "final merged indices" at the root level
 					// for this account.
-					mergedIndices, err := outerJobStore.Read(account)
+					mergedIndices, readErr := outerJobStore.Read(account)
 
 					// TODO: in final version this should be critical error, now just skip it
-					if os.IsNotExist(err) {
+					if os.IsNotExist(readErr) {
 						accountLog.Errorf("Account %s is unavailable - TODO fix", account)
 						continue
 					} else if err != nil {
-						panic(err)
+						panic(readErr)
 					}
 
 					// Then, iterate through all of the job folders and merge
@@ -237,9 +237,9 @@ func mergeAllIndices(finalIndexStore index.Store, config *ReduceConfig) error {
 					// Periodically flush to disk to save memory.
 					if accountsProcessed%ACCOUNT_FLUSH_FREQUENCY == 0 {
 						accountLog.Infof("Flushing indexed accounts.")
-						if err = finalIndexStore.Flush(); err != nil {
-							accountLog.WithError(err).Errorf("Flush error.")
-							panic(err)
+						if flushErr := finalIndexStore.Flush(); flushErr != nil {
+							accountLog.WithError(flushErr).Errorf("Flush error.")
+							panic(flushErr)
 						}
 					}
 				}
