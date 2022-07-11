@@ -93,6 +93,7 @@ func Transactions(archiveWrapper archive.Wrapper, indexStore index.Store) func(h
 
 		for _, txn := range txns {
 			var response hProtocol.Transaction
+			txn.NetworkPassphrase = archiveWrapper.Passphrase
 			response, err = adapters.PopulateTransaction(r, &txn)
 			if err != nil {
 				log.Error(err)
