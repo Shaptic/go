@@ -358,8 +358,10 @@ func (s *store) getCreateTrieIndex(prefix string) (*types.TrieIndex, error) {
 func (s *store) RegisterMetrics(registry *prometheus.Registry) {
 	s.config.Metrics = registry
 
-	registry.Register(s.indexWorkingSet)
-	registry.Register(s.indexWorkingSetTime)
+	if registry != nil {
+		registry.Register(s.indexWorkingSet)
+		registry.Register(s.indexWorkingSetTime)
+	}
 }
 
 func newHorizonLiteGauge(name, help string) prometheus.Gauge {
