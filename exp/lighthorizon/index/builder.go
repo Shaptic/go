@@ -29,9 +29,13 @@ func BuildIndices(
 	modules []string,
 	workerCount int,
 ) (*IndexBuilder, error) {
-	L := log.Ctx(ctx)
+	L := log.Ctx(ctx).WithField("service", "builder")
 
-	indexStore, err := Connect(targetUrl)
+	indexStore, err := ConnectWithConfig(StoreConfig{
+		Url:     targetUrl,
+		Workers: uint32(workerCount),
+		Log:     L.WithField("subservice", "index"),
+	})
 	if err != nil {
 		return nil, err
 	}
