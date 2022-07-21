@@ -130,6 +130,11 @@ func BuildIndices(
 				if nprocessed%97 == 0 {
 					printProgress("Reading ledgers", nprocessed, uint64(ledgerCount), startTime)
 				}
+
+				// Upload indices once per checkpoint to save memory
+				if err := indexStore.Flush(); err != nil {
+					return errors.Wrap(err, "flushing indices failed")
+				}
 			}
 			return nil
 		})
