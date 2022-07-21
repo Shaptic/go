@@ -21,7 +21,10 @@ func parallelFlush(parallel uint32, allIndexes map[string]types.NamedIndices, f 
 
 	batches := make(chan *batch, parallel)
 
+	wg.Add(1)
 	go func() {
+		// forces this async func to be waited on also, otherwise the outer method returns before this finishes.
+		defer wg.Done()
 		for account, indexes := range allIndexes {
 			batches <- &batch{
 				account: account,
