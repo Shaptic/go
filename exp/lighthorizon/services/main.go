@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"io"
+	"sync"
+	"time"
 
 	"github.com/stellar/go/exp/lighthorizon/archive"
 	"github.com/stellar/go/exp/lighthorizon/common"
@@ -10,8 +12,8 @@ import (
 	"github.com/stellar/go/historyarchive"
 	"github.com/stellar/go/toid"
 	"github.com/stellar/go/xdr"
+	"golang.org/x/sync/errgroup"
 
-	"github.com/stellar/go/support/errors"
 	"github.com/stellar/go/support/log"
 )
 
@@ -120,7 +122,59 @@ func (ts *TransactionsService) GetTransactionsByAccount(ctx context.Context,
 	return txs, nil
 }
 
-func searchTxByAccount(ctx context.Context, cursor int64, accountId string, config Config, callback searchCallback) error {
+// AdvanceAccountCursor will adjust `currentCursor` to the next cursor that
+// contains a ledger that should be read for the given `accountId`.
+func AdvanceAccountCursor(
+	store index.Store,
+	accountId string,
+	startCursor, currentCursor int64,
+) (int64, error) {
+	freq := checkpointManager.GetCheckpointFrequency()
+
+	id := toid.Parse(currentCursor)
+	checkpoint := uint32(id.LedgerSequence) / freq
+
+	// Is this the first call? If so, advance to the first relevant cursor.
+	if startCursor == currentCursor {
+		checkpoint, err := store.NextActive(accountId, allIndexes, checkpoint)
+		if err != nil {
+			return currentCursor, err
+		}
+
+		// Note that it's possible that the given cursor is *more* specific
+		// (i.e. ledger-oriented) than the first relevant cursor
+		// (checkpoint-oriented), so prefer the given one in that case.
+		if checkpoint*freq <= uint32(id.LedgerSequence) {
+			return toid.New(int32(id.LedgerSequence+1), 1, 1).ToInt64(), nil
+		}
+
+		return toid.New(int32(checkpoint*freq), 1, 1).ToInt64(), nil
+	}
+
+	// Otherwise, if we're given a cursor that matches a checkpoint ledger, we
+	// can safely assume it comes from a previous advancement (if it didn't,
+	// it's covered by the above case).
+	//
+	// Iterating on a checkpoint ledger means finding the next relevant
+	// checkpoint ledger.
+	if checkpointManager.IsCheckpoint(uint32(id.LedgerSequence)) {
+		checkpoint, err := store.NextActive(accountId, allIndexes, checkpoint+1)
+		if err != nil {
+			return currentCursor, err
+		}
+
+		return toid.New(int32(checkpoint*freq), 1, 1).ToInt64(), nil
+	}
+
+	// Finally, in the last case, we can just adjust to the next ledger.
+	return toid.New(int32(id.LedgerSequence+1), 1, 1).ToInt64(), nil
+}
+
+func searchTxByAccount(ctx context.Context,
+	cursor int64, accountId string,
+	config Config,
+	callback searchCallback,
+) error {
 	cursorMgr := NewCursorManagerForAccountActivity(config.IndexStore, accountId)
 	cursor, err := cursorMgr.Begin(cursor)
 	if err == io.EOF {
@@ -128,47 +182,68 @@ func searchTxByAccount(ctx context.Context, cursor int64, accountId string, conf
 	} else if err != nil {
 		return err
 	}
-
 	nextLedger := getLedgerFromCursor(cursor)
-	log.Debugf("Searching %s for account %s starting at ledger %d",
-		allTransactionsIndex, accountId, nextLedger)
+
+	log.WithField("cursor", cursor).
+		Infof("Searching index by account %s starting at ledger %d",
+			accountId, nextLedger)
+
+	ctx, cancel := context.WithCancel(ctx)
+	start := time.Now()
+
+	defer func() {
+		cancel()
+		log.WithField("duration", time.Since(start)).Debugf("Request fulfilled.")
+	}()
 
 	for {
-		ledger, ledgerErr := config.Archive.GetLedger(ctx, nextLedger)
-		if ledgerErr != nil {
-			return errors.Wrapf(ledgerErr,
-				"ledger export state is out of sync at ledger %d", nextLedger)
+		ledgerReader := make(chan xdr.LedgerCloseMeta, 1)
+		LedgerFeeder(ctx, config.Archive,
+			ledgerReader,
+			historyarchive.Range{
+				Low:  nextLedger,
+				High: nextLedger + checkpointManager.GetCheckpointFrequency(),
+			},
+			8,
+		)
+
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
 
-		reader, readerErr := config.Archive.NewLedgerTransactionReaderFromLedgerCloseMeta(config.Passphrase, ledger)
-		if readerErr != nil {
-			return readerErr
-		}
+		for ledger := range ledgerReader {
+			reader, readerErr := config.Archive.NewLedgerTransactionReaderFromLedgerCloseMeta(config.Passphrase, ledger)
+			if readerErr != nil {
+				return readerErr
+			}
 
-		for {
-			tx, readErr := reader.Read()
-			if readErr != nil {
+			for {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+
+				tx, readErr := reader.Read()
 				if readErr == io.EOF {
 					break
+				} else if readErr != nil {
+					return readErr
 				}
-				return readErr
-			}
 
-			participants, participantErr := config.Archive.GetTransactionParticipants(tx)
-			if participantErr != nil {
-				return participantErr
-			}
+				participants, participantErr := config.Archive.GetTransactionParticipants(tx)
+				if participantErr != nil {
+					return participantErr
+				}
 
-			if _, found := participants[accountId]; found {
-				finished, callBackErr := callback(tx, &ledger.V0.LedgerHeader.Header)
-				if finished || callBackErr != nil {
-					return callBackErr
+				if _, found := participants[accountId]; found {
+					finished, callBackErr := callback(tx, &ledger.V0.LedgerHeader.Header)
+					if finished || callBackErr != nil {
+						return callBackErr
+					}
 				}
 			}
 
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
+			log.WithField("duration", time.Since(start)).
+				Infof("Done reading ledger %d", ledger.LedgerSequence())
 		}
 
 		cursor, err = cursorMgr.Advance()
@@ -184,4 +259,96 @@ func searchTxByAccount(ctx context.Context, cursor int64, accountId string, conf
 
 func getLedgerFromCursor(cursor int64) uint32 {
 	return uint32(toid.Parse(cursor).LedgerSequence)
+}
+
+// LedgerFeeder allows parallel downloads of ledgers via an archive. You provide
+// it with a ledger range and a channel to which to output ledgers, and it will
+// feed ledgers to it in sequential order while downloading up to
+// `downloadWorkerCount` of them in parallel.
+func LedgerFeeder(
+	ctx context.Context,
+	ledgerArchive archive.Archive,
+	outputChan chan<- xdr.LedgerCloseMeta,
+	ledgerRange historyarchive.Range,
+	downloadWorkerCount int,
+) *errgroup.Group {
+	count := (ledgerRange.High - ledgerRange.Low) + 1
+	ledgerFeed := make([]*xdr.LedgerCloseMeta, count)
+	workQueue := make(chan uint32, downloadWorkerCount)
+
+	log.Infof("Preparing %d parallel downloads of range: [%d, %d] (%d ledgers)",
+		downloadWorkerCount, ledgerRange.Low, ledgerRange.High, count)
+	wg, ctx := errgroup.WithContext(ctx)
+
+	// This work publisher adds ledger sequence numbers to the work queue.
+	wg.Go(func() error {
+		for seq := ledgerRange.Low; seq <= ledgerRange.High; seq++ {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+
+			workQueue <- seq
+		}
+
+		close(workQueue)
+		return nil
+	})
+
+	// This result publisher pushes txmetas to the output queue in order.
+	lock := sync.Mutex{}
+	cond := sync.NewCond(&lock)
+
+	go func() {
+		lastPublishedIdx := int64(-1)
+
+		// Until the last ledger in the range has been published to the queue:
+		//  - wait for the signal of a new ledger being available
+		//  - ensure the ledger is sequential after the last one
+		//  - increment and go again
+		for lastPublishedIdx < int64(count)-1 {
+			if ctx.Err() != nil {
+				return
+			}
+
+			lock.Lock()
+			before := lastPublishedIdx
+			for ledgerFeed[before+1] == nil {
+				cond.Wait()
+			}
+
+			outputChan <- *ledgerFeed[before+1]
+			ledgerFeed[before+1] = nil // save memory
+			lastPublishedIdx++
+			lock.Unlock()
+		}
+
+		log.Debugf("Publisher done: %+v", wg.Wait())
+		close(outputChan)
+	}()
+
+	// These are the workers that download & store ledgers in memory.
+	for i := 0; i < downloadWorkerCount; i++ {
+		wg.Go(func() error {
+			for ledgerSeq := range workQueue {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+
+				start := time.Now()
+				txmeta, err := ledgerArchive.GetLedger(ctx, ledgerSeq)
+				log.WithField("duration", time.Since(start)).
+					Infof("Downloaded ledger %d", ledgerSeq)
+				if err != nil {
+					return err
+				}
+
+				ledgerFeed[ledgerSeq-ledgerRange.Low] = &txmeta
+				cond.Signal()
+			}
+
+			return nil
+		})
+	}
+
+	return wg
 }

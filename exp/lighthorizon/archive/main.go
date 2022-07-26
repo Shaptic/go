@@ -29,29 +29,32 @@ type LedgerTransactionReader interface {
 	Read() (LedgerTransaction, error)
 }
 
-// Archive here only has the methods LightHorizon cares about, to make caching/wrapping easier
+// Archive here only has the methods LightHorizon cares about, to make
+// caching/wrapping easier
 type Archive interface {
-
-	// GetLedger - takes a caller context and a sequence number and returns the meta data
-	// for the ledger corresponding to the sequence number. If there is any error, it will
-	// return nil and the error.
+	// GetLedger - takes a caller context and a sequence number and returns the
+	// meta data for the ledger corresponding to the sequence number. If there
+	// is any error, it will return nil and the error.
 	GetLedger(ctx context.Context, sequence uint32) (xdr.LedgerCloseMeta, error)
 
 	// Close - will release any resources used for this archive instance and should be
 	// called at end of usage of archive.
 	Close() error
 
-	// NewLedgerTransactionReaderFromLedgerCloseMeta - takes the passphrase for the blockchain network
-	// and the LedgerCloseMeta(meta data) and returns a reader that can be used to obtain a LedgerTransaction model
-	// from the meta data. If there is any error, it will return nil and the error.
+	// NewLedgerTransactionReaderFromLedgerCloseMeta - takes the passphrase for
+	// the blockchain network and the LedgerCloseMeta(meta data) and returns a
+	// reader that can be used to obtain a LedgerTransaction model from the meta
+	// data. If there is any error, it will return nil and the error.
 	NewLedgerTransactionReaderFromLedgerCloseMeta(networkPassphrase string, ledgerCloseMeta xdr.LedgerCloseMeta) (LedgerTransactionReader, error)
 
-	// GetTransactionParticipants - takes a LedgerTransaction and returns a set of all
-	// participants(accounts) in the transaction. If there is any error, it will return nil and the error.
-	GetTransactionParticipants(transaction LedgerTransaction) (map[string]struct{}, error)
+	// GetTransactionParticipants - takes a LedgerTransaction and returns a set
+	// of all participants(accounts) in the transaction. If there is any error,
+	// it will return nil and the error.
+	GetTransactionParticipants(tx LedgerTransaction) (map[string]struct{}, error)
 
-	// GetOperationParticipants - takes a LedgerTransaction, the Operation within the transaction, and
-	// the 0 based index of the operation within the transaction. It will return a set of all participants(accounts)
-	// in the operation. If there is any error, it will return nil and the error.
-	GetOperationParticipants(transaction LedgerTransaction, operation xdr.Operation, opIndex int) (map[string]struct{}, error)
+	// GetOperationParticipants - takes a LedgerTransaction, the Operation
+	// within the transaction, and the 0 based index of the operation within the
+	// transaction. It will return a set of all participants(accounts) in the
+	// operation. If there is any error, it will return nil and the error.
+	GetOperationParticipants(tx LedgerTransaction, op xdr.Operation, opIndex int) (map[string]struct{}, error)
 }
