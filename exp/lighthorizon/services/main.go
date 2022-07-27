@@ -58,10 +58,6 @@ type TransactionRepository interface {
 // processing (e.g. when a limit is reached) and any error that occurred.
 type SearchCallback func(archive.LedgerTransaction, *xdr.LedgerHeader) (finished bool, err error)
 
-// GetOperationsByAccount retrieves all of the operations associated with an
-// `accountId`` starting from `cursor` and with up to `limit` entries.
-//
-// Note that bounds checks on `limit` should be done outside of this method.
 func (os *OperationsService) GetOperationsByAccount(ctx context.Context,
 	cursor int64, limit uint64,
 	accountId string,
@@ -125,18 +121,23 @@ func (ts *TransactionsService) GetTransactionsByAccount(ctx context.Context,
 }
 
 func searchTxByAccount(ctx context.Context, cursor int64, accountId string, config Config, callback SearchCallback) error {
-	nextLedger, err := getAccountNextLedgerCursor(accountId, cursor, config.IndexStore, allTransactionsIndex)
+	cursorMgr := NewCursorManagerForAccountTransactions(config.IndexStore, accountId)
+	cursor, err := cursorMgr.Begin(cursor)
 	if err == io.EOF {
 		return nil
 	} else if err != nil {
 		return err
 	}
-	log.Debugf("Searching index by account %v starting at cursor %v", accountId, nextLedger)
+
+	nextLedger := getLedgerFromCursor(cursor)
+	log.Debugf("Searching %s for account %s starting at ledger %d",
+		allTransactionsIndex, accountId, nextLedger)
 
 	for {
-		ledger, ledgerErr := config.Archive.GetLedger(ctx, uint32(nextLedger))
+		ledger, ledgerErr := config.Archive.GetLedger(ctx, nextLedger)
 		if ledgerErr != nil {
-			return errors.Wrapf(ledgerErr, "ledger export state is out of sync, missing ledger %v from checkpoint %v", nextLedger, getIndexCheckpointCounter(uint32(nextLedger)))
+			return errors.Wrapf(ledgerErr,
+				"ledger export state is out of sync at ledger %d", nextLedger)
 		}
 
 		reader, readerErr := config.Archive.NewLedgerTransactionReaderFromLedgerCloseMeta(config.Passphrase, ledger)
@@ -159,10 +160,9 @@ func searchTxByAccount(ctx context.Context, cursor int64, accountId string, conf
 			}
 
 			if _, found := participants[accountId]; found {
-				if finished, callBackErr := callback(tx, &ledger.V0.LedgerHeader.Header); callBackErr != nil {
+				finished, callBackErr := callback(tx, &ledger.V0.LedgerHeader.Header)
+				if finished || callBackErr != nil {
 					return callBackErr
-				} else if finished {
-					return nil
 				}
 			}
 
@@ -170,43 +170,18 @@ func searchTxByAccount(ctx context.Context, cursor int64, accountId string, conf
 				return ctx.Err()
 			}
 		}
-		nextCursor := toid.New(int32(nextLedger), 1, 1).ToInt64()
-		nextLedger, err = getAccountNextLedgerCursor(accountId, nextCursor, config.IndexStore, allTransactionsIndex)
+
+		cursor, err = cursorMgr.Advance()
 		if err == io.EOF {
 			return nil
 		} else if err != nil {
 			return err
 		}
+
+		nextLedger = getLedgerFromCursor(cursor)
 	}
 }
 
-// this deals in ledgers but adapts to the index model, which is currently keyed by checkpoint for now
-func getAccountNextLedgerCursor(accountId string, cursor int64, store index.Store, indexName string) (uint64, error) {
-	nextLedger := uint32(toid.Parse(cursor).LedgerSequence + 1)
-
-	// done for performance reasons, skip reading the index for any requested ledger cursors
-	// only need to read the index when next cursor falls on checkpoint boundary
-	if !checkpointManager.IsCheckpoint(nextLedger) {
-		return uint64(nextLedger), nil
-	}
-
-	// the 'NextActive' index query takes a starting checkpoint, from which the index is scanned AFTER that checkpoint, non-inclusive
-	// use the the currrent checkpoint as the starting point since it represents up to the cursor's ledger
-	queryStartingCheckpoint := getIndexCheckpointCounter(nextLedger)
-	indexNextCheckpoint, err := store.NextActive(accountId, indexName, queryStartingCheckpoint)
-
-	if err != nil {
-		return 0, err
-	}
-
-	// return the first ledger of the next index checkpoint that had account activity after cursor
-	// so we need to go back 64 ledgers(one checkpoint's worth) relative to next index checkpoint
-	// to get first ledger, since checkpoint ledgers are the last/greatest ledger in the checkpoint range
-	return uint64((indexNextCheckpoint - 1) * checkpointManager.GetCheckpointFrequency()), nil
-}
-
-// derives what checkpoint this ledger would be in the index
-func getIndexCheckpointCounter(ledger uint32) uint32 {
-	return (checkpointManager.GetCheckpoint(uint32(ledger)) /
-		checkpointManager.GetCheckpointFrequency()) + 1
+func getLedgerFromCursor(cursor int64) uint32 {
+	return uint32(toid.Parse(cursor).LedgerSequence)
 }
