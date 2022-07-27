@@ -16,7 +16,8 @@ import (
 )
 
 const (
-	allIndexes = "all/all"
+	allTransactionsIndex = "all/all"
+	allPaymentsIndex     = "all/payments"
 )
 
 var (
@@ -52,16 +53,28 @@ type TransactionRepository interface {
 	GetTransactionsByAccount(ctx context.Context, cursor int64, limit uint64, accountId string) ([]common.Transaction, error)
 }
 
-type searchCallback func(archive.LedgerTransaction, *xdr.LedgerHeader) (finished bool, err error)
+// SearchCallback is a generic way for any endpoint to process a transaction and
+// its corresponding ledger. It should return whether or not we should stop
+// processing (e.g. when a limit is reached) and any error that occurred.
+type SearchCallback func(archive.LedgerTransaction, *xdr.LedgerHeader) (finished bool, err error)
 
-func (os *OperationsService) GetOperationsByAccount(ctx context.Context, cursor int64, limit uint64, accountId string) ([]common.Operation, error) {
+// GetOperationsByAccount retrieves all of the operations associated with an
+// `accountId`` starting from `cursor` and with up to `limit` entries.
+//
+// Note that bounds checks on `limit` should be done outside of this method.
+func (os *OperationsService) GetOperationsByAccount(ctx context.Context,
+	cursor int64, limit uint64,
+	accountId string,
+) ([]common.Operation, error) {
 	ops := []common.Operation{}
+
 	opsCallback := func(tx archive.LedgerTransaction, ledgerHeader *xdr.LedgerHeader) (bool, error) {
 		for operationOrder, op := range tx.Envelope.Operations() {
-			opParticipants, opParticipantErr := os.Config.Archive.GetOperationParticipants(tx, op, operationOrder)
-			if opParticipantErr != nil {
-				return false, opParticipantErr
+			opParticipants, err := os.Config.Archive.GetOperationParticipants(tx, op, operationOrder)
+			if err != nil {
+				return false, err
 			}
+
 			if _, foundInOp := opParticipants[accountId]; foundInOp {
 				ops = append(ops, common.Operation{
 					TransactionEnvelope: &tx.Envelope,
@@ -70,11 +83,13 @@ func (os *OperationsService) GetOperationsByAccount(ctx context.Context, cursor 
 					TxIndex:             int32(tx.Index),
 					OpIndex:             int32(operationOrder),
 				})
-				if uint64(len(ops)) == limit {
+
+				if uint64(len(ops)) >= limit {
 					return true, nil
 				}
 			}
 		}
+
 		return false, nil
 	}
 
@@ -85,7 +100,10 @@ func (os *OperationsService) GetOperationsByAccount(ctx context.Context, cursor 
 	return ops, nil
 }
 
-func (ts *TransactionsService) GetTransactionsByAccount(ctx context.Context, cursor int64, limit uint64, accountId string) ([]common.Transaction, error) {
+func (ts *TransactionsService) GetTransactionsByAccount(ctx context.Context,
+	cursor int64, limit uint64,
+	accountId string,
+) ([]common.Transaction, error) {
 	txs := []common.Transaction{}
 
 	txsCallback := func(tx archive.LedgerTransaction, ledgerHeader *xdr.LedgerHeader) (bool, error) {
@@ -96,6 +114,7 @@ func (ts *TransactionsService) GetTransactionsByAccount(ctx context.Context, cur
 			TxIndex:             int32(tx.Index),
 			NetworkPassphrase:   ts.Config.Passphrase,
 		})
+
 		return (uint64(len(txs)) >= limit), nil
 	}
 
@@ -105,8 +124,8 @@ func (ts *TransactionsService) GetTransactionsByAccount(ctx context.Context, cur
 	return txs, nil
 }
 
-func searchTxByAccount(ctx context.Context, cursor int64, accountId string, config Config, callback searchCallback) error {
-	nextLedger, err := getAccountNextLedgerCursor(accountId, cursor, config.IndexStore, allIndexes)
+func searchTxByAccount(ctx context.Context, cursor int64, accountId string, config Config, callback SearchCallback) error {
+	nextLedger, err := getAccountNextLedgerCursor(accountId, cursor, config.IndexStore, allTransactionsIndex)
 	if err == io.EOF {
 		return nil
 	} else if err != nil {
@@ -152,7 +171,7 @@ func searchTxByAccount(ctx context.Context, cursor int64, accountId string, conf
 			}
 		}
 		nextCursor := toid.New(int32(nextLedger), 1, 1).ToInt64()
-		nextLedger, err = getAccountNextLedgerCursor(accountId, nextCursor, config.IndexStore, allIndexes)
+		nextLedger, err = getAccountNextLedgerCursor(accountId, nextCursor, config.IndexStore, allTransactionsIndex)
 		if err == io.EOF {
 			return nil
 		} else if err != nil {
