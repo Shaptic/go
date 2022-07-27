@@ -121,7 +121,7 @@ func (ts *TransactionsService) GetTransactionsByAccount(ctx context.Context,
 }
 
 func searchTxByAccount(ctx context.Context, cursor int64, accountId string, config Config, callback searchCallback) error {
-	cursorMgr := NewCursorManagerForAccountTransactions(config.IndexStore, accountId)
+	cursorMgr := NewCursorManagerForAccountActivity(config.IndexStore, accountId)
 	cursor, err := cursorMgr.Begin(cursor)
 	if err == io.EOF {
 		return nil

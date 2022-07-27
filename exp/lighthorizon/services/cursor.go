@@ -14,18 +14,18 @@ type CursorManager interface {
 	Advance() (int64, error)
 }
 
-type AccountTransactionCursorManager struct {
+type AccountActivityCursorManager struct {
 	AccountId string
 
 	store      index.Store
 	lastCursor *toid.ID
 }
 
-func NewCursorManagerForAccountTransactions(store index.Store, accountId string) *AccountTransactionCursorManager {
-	return &AccountTransactionCursorManager{AccountId: accountId, store: store}
+func NewCursorManagerForAccountActivity(store index.Store, accountId string) *AccountActivityCursorManager {
+	return &AccountActivityCursorManager{AccountId: accountId, store: store}
 }
 
-func (c *AccountTransactionCursorManager) Begin(cursor int64) (int64, error) {
+func (c *AccountActivityCursorManager) Begin(cursor int64) (int64, error) {
 	freq := checkpointManager.GetCheckpointFrequency()
 	id := toid.Parse(cursor)
 	lastCheckpoint := uint32(0)
@@ -60,7 +60,7 @@ func (c *AccountTransactionCursorManager) Begin(cursor int64) (int64, error) {
 	return c.lastCursor.ToInt64(), nil
 }
 
-func (c *AccountTransactionCursorManager) Advance() (int64, error) {
+func (c *AccountActivityCursorManager) Advance() (int64, error) {
 	if c.lastCursor == nil {
 		panic("invalid cursor, call Begin() first")
 	}
@@ -93,4 +93,4 @@ func (c *AccountTransactionCursorManager) Advance() (int64, error) {
 	return c.lastCursor.ToInt64(), nil
 }
 
-var _ CursorManager = (*AccountTransactionCursorManager)(nil) // ensure conformity to the interface
+var _ CursorManager = (*AccountActivityCursorManager)(nil) // ensure conformity to the interface

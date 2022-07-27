@@ -34,7 +34,7 @@ func TestAccountTransactionCursorManager(t *testing.T) {
 			checkpoint, allTransactionsIndex, []string{accountId}))
 	}
 
-	cursorMgr := NewCursorManagerForAccountTransactions(store, accountId)
+	cursorMgr := NewCursorManagerForAccountActivity(store, accountId)
 
 	cursor := toid.New(1, 1, 1)
 	var nextCursor int64
