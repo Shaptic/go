@@ -53,10 +53,10 @@ type TransactionRepository interface {
 	GetTransactionsByAccount(ctx context.Context, cursor int64, limit uint64, accountId string) ([]common.Transaction, error)
 }
 
-// SearchCallback is a generic way for any endpoint to process a transaction and
+// searchCallback is a generic way for any endpoint to process a transaction and
 // its corresponding ledger. It should return whether or not we should stop
 // processing (e.g. when a limit is reached) and any error that occurred.
-type SearchCallback func(archive.LedgerTransaction, *xdr.LedgerHeader) (finished bool, err error)
+type searchCallback func(archive.LedgerTransaction, *xdr.LedgerHeader) (finished bool, err error)
 
 func (os *OperationsService) GetOperationsByAccount(ctx context.Context,
 	cursor int64, limit uint64,
@@ -120,7 +120,7 @@ func (ts *TransactionsService) GetTransactionsByAccount(ctx context.Context,
 	return txs, nil
 }
 
-func searchTxByAccount(ctx context.Context, cursor int64, accountId string, config Config, callback SearchCallback) error {
+func searchTxByAccount(ctx context.Context, cursor int64, accountId string, config Config, callback searchCallback) error {
 	cursorMgr := NewCursorManagerForAccountTransactions(config.IndexStore, accountId)
 	cursor, err := cursorMgr.Begin(cursor)
 	if err == io.EOF {
