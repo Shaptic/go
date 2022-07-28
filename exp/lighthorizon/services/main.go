@@ -116,58 +116,18 @@ func (ts *TransactionsService) GetTransactionsByAccount(ctx context.Context,
 		return (uint64(len(txs)) >= limit), nil
 	}
 
+	start := time.Now()
+	defer func() {
+		log.WithField("duration", time.Since(start)).
+			WithField("limit", limit).
+			WithField("cursor", cursor).
+			Infof("Request fulfilled.")
+	}()
+
 	if err := searchTxByAccount(ctx, cursor, accountId, ts.Config, txsCallback); err != nil {
 		return nil, err
 	}
 	return txs, nil
-}
-
-// AdvanceAccountCursor will adjust `currentCursor` to the next cursor that
-// contains a ledger that should be read for the given `accountId`.
-func AdvanceAccountCursor(
-	store index.Store,
-	accountId string,
-	startCursor, currentCursor int64,
-) (int64, error) {
-	freq := checkpointManager.GetCheckpointFrequency()
-
-	id := toid.Parse(currentCursor)
-	checkpoint := uint32(id.LedgerSequence) / freq
-
-	// Is this the first call? If so, advance to the first relevant cursor.
-	if startCursor == currentCursor {
-		checkpoint, err := store.NextActive(accountId, allIndexes, checkpoint)
-		if err != nil {
-			return currentCursor, err
-		}
-
-		// Note that it's possible that the given cursor is *more* specific
-		// (i.e. ledger-oriented) than the first relevant cursor
-		// (checkpoint-oriented), so prefer the given one in that case.
-		if checkpoint*freq <= uint32(id.LedgerSequence) {
-			return toid.New(int32(id.LedgerSequence+1), 1, 1).ToInt64(), nil
-		}
-
-		return toid.New(int32(checkpoint*freq), 1, 1).ToInt64(), nil
-	}
-
-	// Otherwise, if we're given a cursor that matches a checkpoint ledger, we
-	// can safely assume it comes from a previous advancement (if it didn't,
-	// it's covered by the above case).
-	//
-	// Iterating on a checkpoint ledger means finding the next relevant
-	// checkpoint ledger.
-	if checkpointManager.IsCheckpoint(uint32(id.LedgerSequence)) {
-		checkpoint, err := store.NextActive(accountId, allIndexes, checkpoint+1)
-		if err != nil {
-			return currentCursor, err
-		}
-
-		return toid.New(int32(checkpoint*freq), 1, 1).ToInt64(), nil
-	}
-
-	// Finally, in the last case, we can just adjust to the next ledger.
-	return toid.New(int32(id.LedgerSequence+1), 1, 1).ToInt64(), nil
 }
 
 func searchTxByAccount(ctx context.Context,
@@ -190,11 +150,7 @@ func searchTxByAccount(ctx context.Context,
 
 	ctx, cancel := context.WithCancel(ctx)
 	start := time.Now()
-
-	defer func() {
-		cancel()
-		log.WithField("duration", time.Since(start)).Debugf("Request fulfilled.")
-	}()
+	defer cancel()
 
 	for {
 		ledgerReader := make(chan xdr.LedgerCloseMeta, 1)
@@ -202,9 +158,9 @@ func searchTxByAccount(ctx context.Context,
 			ledgerReader,
 			historyarchive.Range{
 				Low:  nextLedger,
-				High: nextLedger + checkpointManager.GetCheckpointFrequency(),
+				High: checkpointManager.GetCheckpoint(nextLedger),
 			},
-			8,
+			4,
 		)
 
 		if ctx.Err() != nil {
