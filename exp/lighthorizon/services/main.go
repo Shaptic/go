@@ -172,9 +172,11 @@ func searchAccountTransactions(ctx context.Context,
 		}
 
 		incrementAverage(&avgProcessDuration, time.Since(start), count)
-
 		start = time.Now()
-		cursor, err = cursorMgr.Advance()
+
+		// We just processed an entire checkpoint range, so we can fast forward
+		// the cursor ahead to the next one.
+		cursor, err = cursorMgr.Skip(64)
 		if err != nil && err != io.EOF {
 			return err
 		}
@@ -213,6 +215,7 @@ func downloadLedgers(
 	ledgerRange historyarchive.Range,
 	downloadWorkerCount int,
 ) *errgroup.Group {
+	start := time.Now()
 	workQueue := make(chan uint32, downloadWorkerCount)
 
 	// Alternatively, we can keep a `downloadWorkerCount`-sized buffer around
@@ -224,13 +227,20 @@ func downloadLedgers(
 	count := (ledgerRange.High - ledgerRange.Low) + 1
 	ledgerFeed := make([]*xdr.LedgerCloseMeta, count)
 
-	log.Infof("Preparing %d parallel downloads of range: [%d, %d] (%d ledgers)",
-		downloadWorkerCount, ledgerRange.Low, ledgerRange.High, count)
-
 	wg, ctx := errgroup.WithContext(ctx)
 
 	// This work publisher adds ledger sequence numbers to the work queue.
 	wg.Go(func() error {
+		defer func() {
+			log.WithField("duration", time.Since(start)).
+				WithField("workers", downloadWorkerCount).
+				WithError(ctx.Err()).
+				Infof("Download of ledger range: [%d, %d] (%d ledgers) complete",
+					ledgerRange.Low, ledgerRange.High, count)
+
+			close(workQueue)
+		}()
+
 		for seq := ledgerRange.Low; seq <= ledgerRange.High; seq++ {
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -239,7 +249,6 @@ func downloadLedgers(
 			workQueue <- seq
 		}
 
-		close(workQueue)
 		return nil
 	})
 
@@ -255,14 +264,16 @@ func downloadLedgers(
 		//  - ensure the ledger is sequential after the last one
 		//  - increment and go again
 		for lastPublishedIdx < int64(count)-1 {
-			if ctx.Err() != nil {
-				break
-			}
-
 			lock.Lock()
 			before := lastPublishedIdx
 			for ledgerFeed[before+1] == nil {
 				cond.Wait()
+			}
+
+			// The signal might have triggered because there was a context
+			// error, so check that first.
+			if ctx.Err() != nil {
+				break
 			}
 
 			outputChan <- *ledgerFeed[before+1]
@@ -278,14 +289,15 @@ func downloadLedgers(
 	for i := 0; i < downloadWorkerCount; i++ {
 		wg.Go(func() error {
 			for ledgerSeq := range workQueue {
-				if ctx.Err() != nil {
+				if ctx.Err() != nil { // timeout, cancel, etc.?
+					cond.Signal() // signals publisher should stop
 					return ctx.Err()
 				}
 
 				start := time.Now()
 				txmeta, err := ledgerArchive.GetLedger(ctx, ledgerSeq)
 				log.WithField("duration", time.Since(start)).
-					Infof("Downloaded ledger %d", ledgerSeq)
+					Debugf("Downloaded ledger %d", ledgerSeq)
 				if err != nil {
 					return err
 				}

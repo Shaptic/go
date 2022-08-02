@@ -117,10 +117,10 @@ func mockArchiveAndIndex(ctx context.Context, passphrase string) (archive.Archiv
 	expectedLedger3Tx2 := testLedgerTx(source, 2, 34)
 
 	mockArchive.
-		On("GetLedger", ctx, uint32(1586112)).Return(expectedLedger1, nil).
-		On("GetLedger", ctx, uint32(1586113)).Return(expectedLedger2, nil).
-		On("GetLedger", ctx, uint32(1586114)).Return(expectedLedger3, nil).
-		On("GetLedger", ctx, mock.Anything).Return(xdr.LedgerCloseMeta{}, nil)
+		On("GetLedger", mock.Anything, uint32(1586112)).Return(expectedLedger1, nil).
+		On("GetLedger", mock.Anything, uint32(1586113)).Return(expectedLedger2, nil).
+		On("GetLedger", mock.Anything, uint32(1586114)).Return(expectedLedger3, nil).
+		On("GetLedger", mock.Anything, mock.Anything).Return(xdr.LedgerCloseMeta{}, nil)
 
 	mockArchive.
 		On("NewLedgerTransactionReaderFromLedgerCloseMeta", passphrase, expectedLedger1).Return(mockReaderLedger1, nil).
