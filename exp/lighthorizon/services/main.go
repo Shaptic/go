@@ -3,22 +3,23 @@ package services
 import (
 	"context"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/stellar/go/exp/lighthorizon/archive"
 	"github.com/stellar/go/exp/lighthorizon/index"
 	"github.com/stellar/go/historyarchive"
-	"github.com/stellar/go/xdr"
-
-	"github.com/stellar/go/support/errors"
 	"github.com/stellar/go/support/log"
+	"github.com/stellar/go/xdr"
 )
 
 const (
 	allTransactionsIndex = "all/all"
 	allPaymentsIndex     = "all/payments"
+	maxParallelDownloads = 8
 )
 
 var (
@@ -88,10 +89,14 @@ func searchAccountTransactions(ctx context.Context,
 	} else if err != nil {
 		return err
 	}
-
 	nextLedger := getLedgerFromCursor(cursor)
-	log.Debugf("Searching %s for account %s starting at ledger %d",
-		allTransactionsIndex, accountId, nextLedger)
+
+	log.WithField("cursor", cursor).
+		Debugf("Searching %s for account %s starting at ledger %d",
+			allTransactionsIndex, accountId, nextLedger)
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	fullStart := time.Now()
 	avgFetchDuration := time.Duration(0)
@@ -109,12 +114,22 @@ func searchAccountTransactions(ctx context.Context,
 	}()
 
 	for {
-		count++
 		start := time.Now()
-		ledger, ledgerErr := config.Archive.GetLedger(ctx, nextLedger)
-		if ledgerErr != nil {
-			return errors.Wrapf(ledgerErr,
-				"ledger export state is out of sync at ledger %d", nextLedger)
+		r := historyarchive.Range{
+			Low:  nextLedger,
+			High: checkpointManager.NextCheckpoint(nextLedger),
+		}
+		count += int64(1 + (r.High - r.Low))
+		ledgerReader := make(chan xdr.LedgerCloseMeta, 1)
+		wg := downloadLedgers(ctx, config.Archive,
+			ledgerReader,
+			r,
+			maxParallelDownloads,
+		)
+		defer wg.Wait()
+
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
 		fetchDuration := time.Since(start)
 		if fetchDuration > time.Second {
@@ -154,10 +169,6 @@ func searchAccountTransactions(ctx context.Context,
 					return nil
 				}
 			}
-
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
 		}
 
 		incrementAverage(&avgProcessDuration, time.Since(start), count)
@@ -184,4 +195,108 @@ func searchAccountTransactions(ctx context.Context,
 func incrementAverage(prevAverage *time.Duration, latest time.Duration, newCount int64) {
 	increment := int64(latest-*prevAverage) / newCount
 	*prevAverage = *prevAverage + time.Duration(increment)
+}
+
+// downloadLedgers allows parallel downloads of ledgers via an archive. Give it
+// a ledger range and a channel to which to output ledgers, and it will feed
+// ledgers to it *in sequential order* while downloading up to
+// `downloadWorkerCount` of them in parallel.
+//
+// It's the caller's responsibility to ensure that all of the goroutines in the
+// returned group have completed.
+//
+// FIXME: Should this be a part of archive.Archive?
+func downloadLedgers(
+	ctx context.Context,
+	ledgerArchive archive.Archive,
+	outputChan chan<- xdr.LedgerCloseMeta,
+	ledgerRange historyarchive.Range,
+	downloadWorkerCount int,
+) *errgroup.Group {
+	workQueue := make(chan uint32, downloadWorkerCount)
+
+	// Alternatively, we can keep a `downloadWorkerCount`-sized buffer around
+	// rather than the full count and then either do clever index manipulation
+	// or a simple append+search to maintain sequential order.
+	//
+	// As it stands, this is only called w/ a checkpoint range, so keeping 64
+	// txmetas in memory isn't a big deal.
+	count := (ledgerRange.High - ledgerRange.Low) + 1
+	ledgerFeed := make([]*xdr.LedgerCloseMeta, count)
+
+	log.Infof("Preparing %d parallel downloads of range: [%d, %d] (%d ledgers)",
+		downloadWorkerCount, ledgerRange.Low, ledgerRange.High, count)
+
+	wg, ctx := errgroup.WithContext(ctx)
+
+	// This work publisher adds ledger sequence numbers to the work queue.
+	wg.Go(func() error {
+		for seq := ledgerRange.Low; seq <= ledgerRange.High; seq++ {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+
+			workQueue <- seq
+		}
+
+		close(workQueue)
+		return nil
+	})
+
+	// This result publisher pushes txmetas to the output queue in order.
+	lock := sync.Mutex{}
+	cond := sync.NewCond(&lock)
+
+	go func() {
+		lastPublishedIdx := int64(-1)
+
+		// Until the last ledger in the range has been published to the queue:
+		//  - wait for the signal of a new ledger being available
+		//  - ensure the ledger is sequential after the last one
+		//  - increment and go again
+		for lastPublishedIdx < int64(count)-1 {
+			if ctx.Err() != nil {
+				break
+			}
+
+			lock.Lock()
+			before := lastPublishedIdx
+			for ledgerFeed[before+1] == nil {
+				cond.Wait()
+			}
+
+			outputChan <- *ledgerFeed[before+1]
+			ledgerFeed[before+1] = nil // save memory
+			lastPublishedIdx++
+			lock.Unlock()
+		}
+
+		close(outputChan)
+	}()
+
+	// These are the workers that download & store ledgers in memory.
+	for i := 0; i < downloadWorkerCount; i++ {
+		wg.Go(func() error {
+			for ledgerSeq := range workQueue {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+
+				start := time.Now()
+				txmeta, err := ledgerArchive.GetLedger(ctx, ledgerSeq)
+				log.WithField("duration", time.Since(start)).
+					Infof("Downloaded ledger %d", ledgerSeq)
+				if err != nil {
+					return err
+				}
+
+				ledgerFeed[ledgerSeq-ledgerRange.Low] = &txmeta
+				cond.Signal()
+			}
+
+			return nil
+		})
+	}
+
+	return wg
 }
