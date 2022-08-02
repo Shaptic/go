@@ -265,22 +265,22 @@ func downloadLedgers(
 		//  - ensure the ledger is sequential after the last one
 		//  - increment and go again
 		for lastPublishedIdx < int64(count)-1 {
-			lock.Lock()
-			before := lastPublishedIdx
-			for ledgerFeed[before+1] == nil {
+			cond.L.Lock()
+			for ledgerFeed[lastPublishedIdx+1] == nil && ctx.Err() == nil {
 				cond.Wait()
 			}
-
 			// The signal might have triggered because there was a context
 			// error, so check that first.
 			if ctx.Err() != nil {
+				cond.L.Unlock()
 				break
 			}
 
-			outputChan <- *ledgerFeed[before+1]
-			ledgerFeed[before+1] = nil // save memory
+			chunk := *ledgerFeed[lastPublishedIdx+1]
+			cond.L.Unlock()
+
 			lastPublishedIdx++
-			lock.Unlock()
+			outputChan <- chunk
 		}
 
 		close(outputChan)
@@ -297,13 +297,15 @@ func downloadLedgers(
 
 				start := time.Now()
 				txmeta, err := ledgerArchive.GetLedger(ctx, ledgerSeq)
-				log.WithField("duration", time.Since(start)).
-					Debugf("Downloaded ledger %d", ledgerSeq)
 				if err != nil {
 					return err
 				}
+				log.WithField("duration", time.Since(start)).
+					Debugf("Downloaded ledger %d", ledgerSeq)
 
+				cond.L.Lock()
 				ledgerFeed[ledgerSeq-ledgerRange.Low] = &txmeta
+				cond.L.Unlock()
 				cond.Signal()
 			}
 
