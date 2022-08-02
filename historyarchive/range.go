@@ -134,6 +134,10 @@ func (r Range) InRange(sequence uint32) bool {
 	return sequence >= r.Low && sequence <= r.High
 }
 
+func (r Range) Size() uint32 {
+	return 1 + (r.High - r.Low)
+}
+
 type byUint32 []uint32
 
 func (a byUint32) Len() int           { return len(a) }

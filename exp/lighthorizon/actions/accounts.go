@@ -62,7 +62,8 @@ func NewTXByAccountHandler(lightHorizon services.LightHorizon) func(http.Respons
 		page.Init()
 		page.FullURL = r.URL
 
-		txns, err := lightHorizon.Transactions.GetTransactionsByAccount(ctx, paginate.Cursor, paginate.Limit, accountId)
+		txns, err := lightHorizon.Transactions.GetTransactionsByAccount(ctx,
+			paginate.Cursor, paginate.Limit, accountId)
 		if err != nil {
 			log.Error(err)
 			sendErrorResponse(w, http.StatusInternalServerError, err.Error())

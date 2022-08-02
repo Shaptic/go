@@ -10,7 +10,7 @@ import (
 type CursorManager interface {
 	Begin(cursor int64) (int64, error)
 	Advance() (int64, error)
-	Skip(count int) (int64, error)
+	Skip(count uint) (int64, error)
 }
 
 type AccountActivityCursorManager struct {
@@ -91,15 +91,17 @@ func (c *AccountActivityCursorManager) Advance() (int64, error) {
 	return c.lastCursor.ToInt64(), nil
 }
 
-func (c *AccountActivityCursorManager) Skip(count int) (cursor int64, err error) {
-	for i := 1; i <= count; i++ {
+func (c *AccountActivityCursorManager) Skip(count uint) (int64, error) {
+	var err error
+	cursor := c.lastCursor.ToInt64()
+	for i := uint(1); i <= count; i++ {
 		cursor, err = c.Advance()
 		if err != nil {
-			return
+			return cursor, err
 		}
 	}
 
-	return
+	return cursor, nil
 }
 
 var _ CursorManager = (*AccountActivityCursorManager)(nil) // ensure conformity to the interface

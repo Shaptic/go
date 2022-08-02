@@ -115,58 +115,58 @@ func searchAccountTransactions(ctx context.Context,
 
 	for {
 		start := time.Now()
-		r := historyarchive.Range{
+		ledgerReader := make(chan xdr.LedgerCloseMeta, 1)
+		ledgerRange := historyarchive.Range{
 			Low:  nextLedger,
 			High: checkpointManager.NextCheckpoint(nextLedger),
 		}
-		count += int64(1 + (r.High - r.Low))
-		ledgerReader := make(chan xdr.LedgerCloseMeta, 1)
+		count += int64(ledgerRange.Size())
 		wg := downloadLedgers(ctx, config.Archive,
-			ledgerReader,
-			r,
-			maxParallelDownloads,
-		)
+			ledgerReader, ledgerRange, maxParallelDownloads)
 		defer wg.Wait()
 
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		fetchDuration := time.Since(start)
-		if fetchDuration > time.Second {
-			log.WithField("duration", fetchDuration).
-				Warnf("Fetching ledger %d was really slow", nextLedger)
-		}
-		incrementAverage(&avgFetchDuration, fetchDuration, count)
+		// fetchDuration := time.Since(start)
+		// if fetchDuration > time.Second {
+		// 	log.WithField("duration", fetchDuration).
+		// 		Warnf("Fetching ledger %d was really slow", nextLedger)
+		// }
+		// incrementAverage(&avgFetchDuration, fetchDuration, count)
 
-		start = time.Now()
-		reader, readerErr := config.Archive.NewLedgerTransactionReaderFromLedgerCloseMeta(config.Passphrase, ledger)
-		if readerErr != nil {
-			return readerErr
-		}
+		for ledger := range ledgerReader {
 
-		for {
-			tx, readErr := reader.Read()
-			if readErr == io.EOF {
-				break
-			} else if readErr != nil {
-				return readErr
+			start = time.Now()
+			reader, readerErr := config.Archive.NewLedgerTransactionReaderFromLedgerCloseMeta(config.Passphrase, ledger)
+			if readerErr != nil {
+				return readerErr
 			}
 
-			// Note: If we move to ledger-based indices, we don't need this,
-			// since we have a guarantee that the transaction will contain the
-			// account as a participant.
-			participants, participantErr := config.Archive.GetTransactionParticipants(tx)
-			if participantErr != nil {
-				return participantErr
-			}
+			for {
+				tx, readErr := reader.Read()
+				if readErr == io.EOF {
+					break
+				} else if readErr != nil {
+					return readErr
+				}
 
-			if _, found := participants[accountId]; found {
-				finished, callBackErr := callback(tx, &ledger.V0.LedgerHeader.Header)
-				if callBackErr != nil {
-					return callBackErr
-				} else if finished {
-					incrementAverage(&avgProcessDuration, time.Since(start), count)
-					return nil
+				// Note: If we move to ledger-based indices, we don't need this,
+				// since we have a guarantee that the transaction will contain the
+				// account as a participant.
+				participants, participantErr := config.Archive.GetTransactionParticipants(tx)
+				if participantErr != nil {
+					return participantErr
+				}
+
+				if _, found := participants[accountId]; found {
+					finished, callBackErr := callback(tx, &ledger.V0.LedgerHeader.Header)
+					if callBackErr != nil {
+						return callBackErr
+					} else if finished {
+						incrementAverage(&avgProcessDuration, time.Since(start), count)
+						return nil
+					}
 				}
 			}
 		}
@@ -176,7 +176,7 @@ func searchAccountTransactions(ctx context.Context,
 
 		// We just processed an entire checkpoint range, so we can fast forward
 		// the cursor ahead to the next one.
-		cursor, err = cursorMgr.Skip(64)
+		cursor, err = cursorMgr.Skip(uint(ledgerRange.Size()))
 		if err != nil && err != io.EOF {
 			return err
 		}
