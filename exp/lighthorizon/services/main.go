@@ -205,7 +205,8 @@ func incrementAverage(prevAverage *time.Duration, latest time.Duration, newCount
 // `downloadWorkerCount` of them in parallel.
 //
 // It's the caller's responsibility to ensure that all of the goroutines in the
-// returned group have completed.
+// returned group have completed. In contrast, this function closes the output
+// channel when all work has been submitted (or the context errors).
 //
 // FIXME: Should this be a part of archive.Archive?
 func downloadLedgers(
