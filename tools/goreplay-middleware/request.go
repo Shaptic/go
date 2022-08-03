@@ -8,7 +8,7 @@ import (
 )
 
 var horizonURLs = regexp.MustCompile(`"result_meta_xdr":[ ]?"([^"]*)",`)
-var findResultMetaXDR = regexp.MustCompile(`https:\/\/.*?stellar.org`)
+var findResultMetaXDR = regexp.MustCompile(`https:\/\/.*?stellar\.org`)
 
 // removeRegexps contains a list of regular expressions that, when matched,
 // will be changed to an empty string. This is done to exclude known
