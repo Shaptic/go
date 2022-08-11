@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
 )
 
 // maxPerSecond defines how many requests should be checked at max per second
@@ -20,8 +19,6 @@ const (
 	replayedResponseType byte = '3'
 )
 
-var lastCheck = time.Now()
-var reqsCheckedPerSeq = 0
 var pendingRequests map[string]*Request
 
 func main() {
@@ -65,16 +62,8 @@ func process(stderr, stdout io.StringWriter, buf []byte) {
 
 	switch payloadType {
 	case requestType:
-		if time.Since(lastCheck) > time.Second {
-			reqsCheckedPerSeq = 0
-			lastCheck = time.Now()
-		}
-
-		if reqsCheckedPerSeq < maxPerSecond {
-			pendingRequests[reqID] = &Request{
-				Headers: string(buf),
-			}
-			reqsCheckedPerSeq++
+		pendingRequests[reqID] = &Request{
+			Headers: string(buf),
 		}
 
 		// Emitting data back, without modification
