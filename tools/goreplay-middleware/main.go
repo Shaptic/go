@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"time"
 )
@@ -24,7 +25,11 @@ var reqsCheckedPerSeq = 0
 var pendingRequests map[string]*Request
 
 func main() {
-	scanner := bufio.NewScanner(os.Stdin)
+	processAll(os.Stdin, os.Stderr, os.Stdout)
+}
+
+func processAll(stdin io.Reader, stderr, stdout io.StringWriter) {
+	scanner := bufio.NewScanner(stdin)
 	pendingRequests = make(map[string]*Request)
 
 	for scanner.Scan() {
@@ -36,11 +41,11 @@ func main() {
 			continue
 		}
 
-		process(buf)
+		process(stderr, stdout, buf)
 	}
 }
 
-func process(buf []byte) {
+func process(stderr, stdout io.StringWriter, buf []byte) {
 	// First byte indicate payload type:
 	payloadType := buf[0]
 	headerSize := bytes.IndexByte(buf, '\n') + 1
@@ -53,7 +58,7 @@ func process(buf []byte) {
 	payload := buf[headerSize:]
 
 	// debug
-	os.Stderr.WriteString(fmt.Sprintf("%d %s\n", payloadType, reqID))
+	os.Stderr.WriteString(fmt.Sprintf("%c %s\n", payloadType, reqID))
 
 	switch payloadType {
 	case requestType:
@@ -70,14 +75,9 @@ func process(buf []byte) {
 		}
 
 		// Emitting data back, without modification
-		hexEncoder := hex.NewEncoder(os.Stdout)
-		_, err := hexEncoder.Write(buf)
+		_, err := stdout.WriteString(hex.EncodeToString(buf))
 		if err != nil {
-			os.Stderr.WriteString(fmt.Sprintf("hexEncoder.Write error: %v", err))
-		}
-		_, err = os.Stdout.Write([]byte{'\n'})
-		if err != nil {
-			os.Stderr.WriteString(fmt.Sprintf("os.Stdout.Write error: %v", err))
+			stderr.WriteString(fmt.Sprintf("stdout.WriteString error: %v", err))
 		}
 	case originalResponseType:
 		if req, ok := pendingRequests[reqID]; ok {
@@ -92,7 +92,7 @@ func process(buf []byte) {
 			if !req.ResponseEquals() {
 				// TODO improve the message to at least print the requested path
 				// TODO in the future publish the results to S3 for easier processing
-				os.Stderr.WriteString("MISMATCH " + req.SerializeBase64() + "\n")
+				stderr.WriteString("MISMATCH " + req.SerializeBase64() + "\n")
 			}
 		}
 	}
