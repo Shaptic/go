@@ -24,6 +24,7 @@ var pendingRequests map[string]*Request
 
 func main() {
 	scanner := bufio.NewScanner(os.Stdin)
+	pendingRequests = make(map[string]*Request)
 
 	for scanner.Scan() {
 		encoded := scanner.Bytes()
