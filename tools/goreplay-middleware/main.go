@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"time"
 )
@@ -46,6 +47,9 @@ func process(buf []byte) {
 	// For each request you should receive 3 payloads (request, response, replayed response) with same request id
 	reqID := string(meta[1])
 	payload := buf[headerSize:]
+
+	// debug
+	os.Stderr.WriteString(fmt.Sprintf("%d %s %s\n", payloadType, reqID, string(buf)))
 
 	switch payloadType {
 	case requestType:
