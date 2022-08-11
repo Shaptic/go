@@ -28,9 +28,12 @@ func main() {
 	processAll(os.Stdin, os.Stderr, os.Stdout)
 }
 
+func init() {
+	pendingRequests = make(map[string]*Request)
+}
+
 func processAll(stdin io.Reader, stderr, stdout io.StringWriter) {
 	scanner := bufio.NewScanner(stdin)
-	pendingRequests = make(map[string]*Request)
 
 	for scanner.Scan() {
 		encoded := scanner.Bytes()
@@ -75,7 +78,7 @@ func process(stderr, stdout io.StringWriter, buf []byte) {
 		}
 
 		// Emitting data back, without modification
-		_, err := stdout.WriteString(hex.EncodeToString(buf))
+		_, err := stdout.WriteString(hex.EncodeToString(buf) + "\n")
 		if err != nil {
 			stderr.WriteString(fmt.Sprintf("stdout.WriteString error: %v", err))
 		}
@@ -86,7 +89,6 @@ func process(stderr, stdout io.StringWriter, buf []byte) {
 		}
 	case replayedResponseType:
 		if req, ok := pendingRequests[reqID]; ok {
-			delete(pendingRequests, reqID)
 			req.MirroredResponse = payload
 
 			if !req.ResponseEquals() {
@@ -94,6 +96,8 @@ func process(stderr, stdout io.StringWriter, buf []byte) {
 				// TODO in the future publish the results to S3 for easier processing
 				stderr.WriteString("MISMATCH " + req.SerializeBase64() + "\n")
 			}
+
+			delete(pendingRequests, reqID)
 		}
 	}
 }
