@@ -30,7 +30,11 @@ func main() {
 	for scanner.Scan() {
 		encoded := scanner.Bytes()
 		buf := make([]byte, len(encoded)/2)
-		hex.Decode(buf, encoded)
+		_, err := hex.Decode(buf, encoded)
+		if err != nil {
+			os.Stderr.WriteString(fmt.Sprintf("hex.Decode error: %v", err))
+			continue
+		}
 
 		process(buf)
 	}
@@ -49,7 +53,7 @@ func process(buf []byte) {
 	payload := buf[headerSize:]
 
 	// debug
-	os.Stderr.WriteString(fmt.Sprintf("%d %s %s\n", payloadType, reqID, string(buf)))
+	os.Stderr.WriteString(fmt.Sprintf("%d %s\n", payloadType, reqID))
 
 	switch payloadType {
 	case requestType:
@@ -67,8 +71,14 @@ func process(buf []byte) {
 
 		// Emitting data back, without modification
 		hexEncoder := hex.NewEncoder(os.Stdout)
-		hexEncoder.Write(buf)
-		os.Stdout.Write([]byte{'\n'})
+		_, err := hexEncoder.Write(buf)
+		if err != nil {
+			os.Stderr.WriteString(fmt.Sprintf("hexEncoder.Write error: %v", err))
+		}
+		_, err = os.Stdout.Write([]byte{'\n'})
+		if err != nil {
+			os.Stderr.WriteString(fmt.Sprintf("os.Stdout.Write error: %v", err))
+		}
 	case originalResponseType:
 		if req, ok := pendingRequests[reqID]; ok {
 			// Token is inside response body
