@@ -8,10 +8,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 )
-
-// maxPerSecond defines how many requests should be checked at max per second
-const maxPerSecond = 1
 
 const (
 	requestType          byte = '1'
@@ -22,6 +20,13 @@ const (
 var pendingRequests map[string]*Request
 
 func main() {
+	ticker := time.NewTicker(2 * time.Second)
+	go func() {
+		for _ = range ticker.C {
+			fmt.Println("Middleware is alive")
+		}
+	}()
+
 	processAll(os.Stdin, os.Stderr, os.Stdout)
 }
 
@@ -83,10 +88,13 @@ func process(stderr, stdout io.StringWriter, buf []byte) {
 			if !req.ResponseEquals() {
 				// TODO improve the message to at least print the requested path
 				// TODO in the future publish the results to S3 for easier processing
-				stderr.WriteString("MISMATCH " + req.SerializeBase64() + "\n")
+				// stderr.WriteString("MISMATCH " + req.SerializeBase64() + "\n")
+				stderr.WriteString("MISMATCH\n")
 			}
 
 			delete(pendingRequests, reqID)
 		}
+	default:
+		stderr.WriteString("Unknown message type\n")
 	}
 }
