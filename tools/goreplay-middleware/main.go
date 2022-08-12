@@ -61,9 +61,14 @@ func processAll(stdin io.Reader, stderr, stdout io.Writer) {
 
 		process(stderr, stdout, buf)
 
-		if len(pendingRequests) > 1000 {
+		if len(pendingRequests) > 2000 {
 			// Around 3-4% of responses is lost (not sure why) so pendingRequests can grow
 			// indefinietly. Let's just truncate it when it becomes too big.
+			// There is one gotcha here. Goreplay will still send requests
+			// (`1` type payloads) even if traffic is rate limited. So if rate
+			// limit is applied even more requests can be lost. So TODO: we should
+			// implement rate limiting here when using middleware rather than
+			// using Goreplay rate limit.
 			pendingRequests = make(map[string]*Request)
 		}
 	}
