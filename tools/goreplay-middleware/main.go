@@ -15,7 +15,7 @@ import (
 )
 
 // maxPerSecond defines how many requests should be checked at max per second
-const maxPerSecond = 10
+const maxPerSecond = 100
 
 const (
 	requestType          byte = '1'
@@ -25,17 +25,10 @@ const (
 
 var lastCheck = time.Now()
 var reqsCheckedPerSeq = 0
-var pendingRequestsAdded int64
+var pendingRequestsAdded, ignoredCount, diffsCount, okCount int64
 var pendingRequests map[string]*Request
 
 func main() {
-	ticker := time.NewTicker(2 * time.Second)
-	go func() {
-		for range ticker.C {
-			os.Stderr.WriteString(fmt.Sprintf("Middleware stats: pendingRequests=%d pendingRequestsAdded=%d\n", len(pendingRequests), pendingRequestsAdded))
-		}
-	}()
-
 	processAll(os.Stdin, os.Stderr, os.Stdout)
 }
 
@@ -96,6 +89,16 @@ func process(stderr, stdout io.Writer, buf []byte) {
 		if time.Since(lastCheck) > time.Second {
 			reqsCheckedPerSeq = 0
 			lastCheck = time.Now()
+
+			// Print stats every second
+			os.Stderr.WriteString(fmt.Sprintf(
+				"middleware stats: pendingRequests=%d requestsAdded=%d ok=%d diffs=%d ignored=%d\n",
+				len(pendingRequests),
+				pendingRequestsAdded,
+				okCount,
+				diffsCount,
+				ignoredCount,
+			))
 		}
 
 		if reqsCheckedPerSeq < maxPerSecond {
@@ -113,22 +116,30 @@ func process(stderr, stdout io.Writer, buf []byte) {
 		}
 	case originalResponseType:
 		if req, ok := pendingRequests[reqID]; ok {
-			// Token is inside response body
+			// Original response can arrive after mirrored so this should be improved
+			// instead of ignoring this case.
 			req.OriginalResponse = payload
 		}
 	case replayedResponseType:
 		if req, ok := pendingRequests[reqID]; ok {
 			req.MirroredResponse = payload
 
-			if !req.ResponseEquals() {
-				// TODO in the future publish the results to S3 for easier processing
-				// stderr.WriteString("MISMATCH " + req.SerializeBase64() + "\n")
-				log.WithFields(log.F{
-					"expected": req.OriginalBody(),
-					"actual":   req.MirroredBody(),
-					"headers":  string(req.Headers),
-					"path":     string(proto.Path(req.Headers)),
-				}).Info("Mismatch found")
+			if req.IsIgnored() {
+				ignoredCount++
+			} else {
+				if !req.ResponseEquals() {
+					// TODO in the future publish the results to S3 for easier processing
+					// stderr.WriteString("MISMATCH " + req.SerializeBase64() + "\n")
+					log.WithFields(log.F{
+						"expected": req.OriginalBody(),
+						"actual":   req.MirroredBody(),
+						"headers":  string(req.Headers),
+						"path":     string(proto.Path(req.Headers)),
+					}).Info("Mismatch found")
+					diffsCount++
+				} else {
+					okCount++
+				}
 			}
 
 			delete(pendingRequests, reqID)
