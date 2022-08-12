@@ -28,7 +28,7 @@ type replace struct {
 var replaceRegexps = []replace{}
 
 type Request struct {
-	Headers          string
+	Headers          []byte
 	OriginalResponse []byte
 	MirroredResponse []byte
 }

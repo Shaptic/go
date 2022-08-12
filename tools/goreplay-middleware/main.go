@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/buger/goreplay/proto"
 	"github.com/stellar/go/support/log"
 )
 
@@ -76,7 +77,7 @@ func process(stderr, stdout io.Writer, buf []byte) {
 	switch payloadType {
 	case requestType:
 		pendingRequests[reqID] = &Request{
-			Headers: string(buf),
+			Headers: payload,
 		}
 
 		// Emitting data back, without modification
@@ -99,7 +100,8 @@ func process(stderr, stdout io.Writer, buf []byte) {
 				log.WithFields(log.F{
 					"expected": req.OriginalBody(),
 					"actual":   req.MirroredBody(),
-					"headers":  req.Headers,
+					"headers":  string(req.Headers),
+					"path":     string(proto.Path(req.Headers)),
 				}).Info("Mismatch found")
 			}
 

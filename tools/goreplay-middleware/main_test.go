@@ -11,7 +11,7 @@ import (
 
 func TestProcess(t *testing.T) {
 	// For 1 type, it returns the same msg to stdout
-	payload := "1 ID\nGET /ledgers HTTP/1.1\nHost: horizon.stellar.org\n\n"
+	payload := "1 ID\nGET /ledgers HTTP/1.1\r\nHost: horizon.stellar.org\r\n\r\n"
 	stdin := strings.NewReader(hex.EncodeToString([]byte(payload)))
 
 	stdout := bytes.Buffer{}
