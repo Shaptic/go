@@ -20,13 +20,14 @@ const (
 	replayedResponseType byte = '3'
 )
 
+var pendingRequestsAdded int64
 var pendingRequests map[string]*Request
 
 func main() {
 	ticker := time.NewTicker(2 * time.Second)
 	go func() {
 		for range ticker.C {
-			os.Stderr.WriteString("Middleware is alive\n")
+			os.Stderr.WriteString(fmt.Sprintf("Middleware stats: pendingRequests=%d pendingRequestsAdded=%d\n", len(pendingRequests), pendingRequestsAdded))
 		}
 	}()
 
@@ -59,6 +60,12 @@ func processAll(stdin io.Reader, stderr, stdout io.Writer) {
 		}
 
 		process(stderr, stdout, buf)
+
+		if len(pendingRequests) > 1000 {
+			// Around 3-4% of responses is lost (not sure why) so pendingRequests can grow
+			// indefinietly. Let's just truncate it when it becomes too big.
+			pendingRequests = make(map[string]*Request)
+		}
 	}
 }
 
@@ -79,6 +86,7 @@ func process(stderr, stdout io.Writer, buf []byte) {
 		pendingRequests[reqID] = &Request{
 			Headers: payload,
 		}
+		pendingRequestsAdded++
 
 		// Emitting data back, without modification
 		_, err := io.WriteString(stdout, hex.EncodeToString(buf)+"\n")
