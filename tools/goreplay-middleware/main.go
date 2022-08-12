@@ -14,12 +14,17 @@ import (
 	"github.com/stellar/go/support/log"
 )
 
+// maxPerSecond defines how many requests should be checked at max per second
+const maxPerSecond = 10
+
 const (
 	requestType          byte = '1'
 	originalResponseType byte = '2'
 	replayedResponseType byte = '3'
 )
 
+var lastCheck = time.Now()
+var reqsCheckedPerSeq = 0
 var pendingRequestsAdded int64
 var pendingRequests map[string]*Request
 
@@ -66,9 +71,9 @@ func processAll(stdin io.Reader, stderr, stdout io.Writer) {
 			// indefinietly. Let's just truncate it when it becomes too big.
 			// There is one gotcha here. Goreplay will still send requests
 			// (`1` type payloads) even if traffic is rate limited. So if rate
-			// limit is applied even more requests can be lost. So TODO: we should
-			// implement rate limiting here when using middleware rather than
-			// using Goreplay rate limit.
+			// limit is applied even more requests can be lost. So we should
+			// use rate limiting implemented here when using middleware rather than
+			// Goreplay's rate limit.
 			pendingRequests = make(map[string]*Request)
 		}
 	}
@@ -88,10 +93,18 @@ func process(stderr, stdout io.Writer, buf []byte) {
 
 	switch payloadType {
 	case requestType:
-		pendingRequests[reqID] = &Request{
-			Headers: payload,
+		if time.Since(lastCheck) > time.Second {
+			reqsCheckedPerSeq = 0
+			lastCheck = time.Now()
 		}
-		pendingRequestsAdded++
+
+		if reqsCheckedPerSeq < maxPerSecond {
+			pendingRequests[reqID] = &Request{
+				Headers: payload,
+			}
+			pendingRequestsAdded++
+			reqsCheckedPerSeq++
+		}
 
 		// Emitting data back, without modification
 		_, err := io.WriteString(stdout, hex.EncodeToString(buf)+"\n")
