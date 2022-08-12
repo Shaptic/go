@@ -33,6 +33,14 @@ type Request struct {
 	MirroredResponse []byte
 }
 
+func (r *Request) OriginalBody() string {
+	return string(proto.Body(r.OriginalResponse))
+}
+
+func (r *Request) MirroredBody() string {
+	return string(proto.Body(r.MirroredResponse))
+}
+
 func (r *Request) ResponseEquals() bool {
 	// TODO fast fail on `Latest-Ledger` mismatch
 

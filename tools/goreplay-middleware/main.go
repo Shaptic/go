@@ -9,6 +9,8 @@ import (
 	"io"
 	"os"
 	"time"
+
+	"github.com/stellar/go/support/log"
 )
 
 const (
@@ -22,8 +24,8 @@ var pendingRequests map[string]*Request
 func main() {
 	ticker := time.NewTicker(2 * time.Second)
 	go func() {
-		for _ = range ticker.C {
-			os.Stderr.WriteString("Middleware is alive")
+		for range ticker.C {
+			os.Stderr.WriteString("Middleware is alive\n")
 		}
 	}()
 
@@ -34,8 +36,13 @@ func init() {
 	pendingRequests = make(map[string]*Request)
 }
 
-func processAll(stdin io.Reader, stderr, stdout io.StringWriter) {
+func processAll(stdin io.Reader, stderr, stdout io.Writer) {
+	log.SetOut(stderr)
+	log.SetLevel(log.InfoLevel)
+
 	scanner := bufio.NewScanner(stdin)
+	buf := make([]byte, 20*1024*1024) // 20MB
+	scanner.Buffer(buf, 20*1024*1024)
 
 	for scanner.Scan() {
 		encoded := scanner.Bytes()
@@ -46,11 +53,15 @@ func processAll(stdin io.Reader, stderr, stdout io.StringWriter) {
 			continue
 		}
 
+		if err := scanner.Err(); err != nil {
+			os.Stderr.WriteString(fmt.Sprintf("scanner.Err(): %v\n", err))
+		}
+
 		process(stderr, stdout, buf)
 	}
 }
 
-func process(stderr, stdout io.StringWriter, buf []byte) {
+func process(stderr, stdout io.Writer, buf []byte) {
 	// First byte indicate payload type:
 	payloadType := buf[0]
 	headerSize := bytes.IndexByte(buf, '\n') + 1
@@ -62,9 +73,6 @@ func process(stderr, stdout io.StringWriter, buf []byte) {
 	reqID := string(meta[1])
 	payload := buf[headerSize:]
 
-	// debug
-	os.Stderr.WriteString(fmt.Sprintf("%c %s\n", payloadType, reqID))
-
 	switch payloadType {
 	case requestType:
 		pendingRequests[reqID] = &Request{
@@ -72,9 +80,9 @@ func process(stderr, stdout io.StringWriter, buf []byte) {
 		}
 
 		// Emitting data back, without modification
-		_, err := stdout.WriteString(hex.EncodeToString(buf) + "\n")
+		_, err := io.WriteString(stdout, hex.EncodeToString(buf)+"\n")
 		if err != nil {
-			stderr.WriteString(fmt.Sprintf("stdout.WriteString error: %v", err))
+			io.WriteString(stderr, fmt.Sprintf("stdout.WriteString error: %v", err))
 		}
 	case originalResponseType:
 		if req, ok := pendingRequests[reqID]; ok {
@@ -86,15 +94,18 @@ func process(stderr, stdout io.StringWriter, buf []byte) {
 			req.MirroredResponse = payload
 
 			if !req.ResponseEquals() {
-				// TODO improve the message to at least print the requested path
 				// TODO in the future publish the results to S3 for easier processing
 				// stderr.WriteString("MISMATCH " + req.SerializeBase64() + "\n")
-				stderr.WriteString("MISMATCH\n")
+				log.WithFields(log.F{
+					"expected": req.OriginalBody(),
+					"actual":   req.MirroredBody(),
+					"headers":  req.Headers,
+				}).Info("Mismatch found")
 			}
 
 			delete(pendingRequests, reqID)
 		}
 	default:
-		stderr.WriteString("Unknown message type\n")
+		io.WriteString(stderr, "Unknown message type\n")
 	}
 }
