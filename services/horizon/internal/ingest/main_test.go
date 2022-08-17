@@ -162,7 +162,7 @@ func TestStateMachineRunReturnsErrorWhenNextStateIsShutdownWithError(t *testing.
 	assert.EqualError(t, err, "invalid range: [0, 0]")
 }
 
-func TestMaybeVerifyStateGetExpStateInvalidDBErrCancelOrContextCanceled(t *testing.T) {
+func TestMaybeVerifyStateGetExpStateInvalidError(t *testing.T) {
 	historyQ := &mockDBQ{}
 	system := &system{
 		historyQ:          historyQ,
@@ -180,13 +180,21 @@ func TestMaybeVerifyStateGetExpStateInvalidDBErrCancelOrContextCanceled(t *testi
 	defer func() { log = oldLogger }()
 
 	historyQ.On("GetExpStateInvalid", system.ctx).Return(false, db.ErrCancelled).Once()
-	system.maybeVerifyState(0)
+	system.maybeVerifyState(63)
+	system.wg.Wait()
 
 	historyQ.On("GetExpStateInvalid", system.ctx).Return(false, context.Canceled).Once()
-	system.maybeVerifyState(0)
+	system.maybeVerifyState(63)
+	system.wg.Wait()
 
 	logged := done()
 	assert.Len(t, logged, 0)
+
+	// Ensure state verifier does not start also for any other error
+	historyQ.On("GetExpStateInvalid", system.ctx).Return(false, errors.New("my error")).Once()
+	system.maybeVerifyState(63)
+	system.wg.Wait()
+
 	historyQ.AssertExpectations(t)
 }
 func TestMaybeVerifyInternalDBErrCancelOrContextCanceled(t *testing.T) {
@@ -364,6 +372,18 @@ func (m *mockDBQ) NewOperationParticipantBatchInsertBuilder(maxBatchSize int) hi
 func (m *mockDBQ) NewTradeBatchInsertBuilder(maxBatchSize int) history.TradeBatchInsertBuilder {
 	args := m.Called(maxBatchSize)
 	return args.Get(0).(history.TradeBatchInsertBuilder)
+}
+
+func (m *mockDBQ) ReapLookupTables(ctx context.Context, offsets map[string]int64) (map[string]int64, map[string]int64, error) {
+	args := m.Called(ctx, offsets)
+	var r1, r2 map[string]int64
+	if args.Get(0) != nil {
+		r1 = args.Get(0).(map[string]int64)
+	}
+	if args.Get(1) != nil {
+		r1 = args.Get(1).(map[string]int64)
+	}
+	return r1, r2, args.Error(2)
 }
 
 func (m *mockDBQ) RebuildTradeAggregationTimes(ctx context.Context, from, to strtime.Millis, roundingSlippageFilter int) error {

@@ -85,6 +85,7 @@ type Config struct {
 	HistoryArchiveURL string
 
 	DisableStateVerification     bool
+	EnableReapLookupTables       bool
 	EnableExtendedLogLedgerStats bool
 
 	ReingestEnabled             bool
@@ -126,6 +127,10 @@ type Metrics struct {
 	// LedgerIngestionTradeAggregationDuration exposes timing metrics about the rate and
 	// duration of rebuilding trade aggregation buckets.
 	LedgerIngestionTradeAggregationDuration prometheus.Summary
+
+	// LedgerIngestionReapLookupTablesDuration exposes timing metrics about the rate and
+	// duration of reaping lookup tables.
+	LedgerIngestionReapLookupTablesDuration prometheus.Summary
 
 	// StateVerifyDuration exposes timing metrics about the rate and
 	// duration of state verification.
@@ -201,6 +206,8 @@ type system struct {
 	disableStateVerification bool
 
 	checkpointManager historyarchive.CheckpointManager
+
+	reapOffsets map[string]int64
 }
 
 func NewSystem(config Config) (System, error) {
@@ -311,6 +318,11 @@ func (s *system) initMetrics() {
 	s.metrics.LedgerIngestionTradeAggregationDuration = prometheus.NewSummary(prometheus.SummaryOpts{
 		Namespace: "horizon", Subsystem: "ingest", Name: "ledger_ingestion_trade_aggregation_duration_seconds",
 		Help: "ledger ingestion trade aggregation rebuild durations, sliding window = 10m",
+	})
+
+	s.metrics.LedgerIngestionReapLookupTablesDuration = prometheus.NewSummary(prometheus.SummaryOpts{
+		Namespace: "horizon", Subsystem: "ingest", Name: "ledger_ingestion_reap_lookup_tables_duration_seconds",
+		Help: "ledger ingestion reap lookup tables durations, sliding window = 10m",
 	})
 
 	s.metrics.StateVerifyDuration = prometheus.NewSummary(prometheus.SummaryOpts{
@@ -445,6 +457,7 @@ func (s *system) RegisterMetrics(registry *prometheus.Registry) {
 	registry.MustRegister(s.metrics.LocalLatestLedger)
 	registry.MustRegister(s.metrics.LedgerIngestionDuration)
 	registry.MustRegister(s.metrics.LedgerIngestionTradeAggregationDuration)
+	registry.MustRegister(s.metrics.LedgerIngestionReapLookupTablesDuration)
 	registry.MustRegister(s.metrics.StateVerifyDuration)
 	registry.MustRegister(s.metrics.StateInvalidGauge)
 	registry.MustRegister(s.metrics.LedgerStatsCounter)
@@ -476,14 +489,15 @@ func (s *system) RegisterMetrics(registry *prometheus.Registry) {
 // Finally, 1a and 1b are tricky because we need to keep the latest version
 // of order book graph in memory of each Horizon instance. To solve this:
 // * For state init:
-//   * If instance is a leader, we update the order book graph by running state
+//   - If instance is a leader, we update the order book graph by running state
 //     pipeline normally.
-//   * If instance is NOT a leader, we build a graph from offers present in a
+//   - If instance is NOT a leader, we build a graph from offers present in a
 //     database. We completely omit state pipeline in this case.
+//
 // * For resuming:
-//   * If instances is a leader, it runs full ledger pipeline, including updating
+//   - If instances is a leader, it runs full ledger pipeline, including updating
 //     a database.
-//   * If instances is a NOT leader, it runs ledger pipeline without updating a
+//   - If instances is a NOT leader, it runs ledger pipeline without updating a
 //     a database so order book graph is updated but database is not overwritten.
 func (s *system) Run() {
 	s.runStateMachine(startState{})
@@ -627,8 +641,11 @@ func (s *system) runStateMachine(cur stateMachineNode) error {
 
 func (s *system) maybeVerifyState(lastIngestedLedger uint32) {
 	stateInvalid, err := s.historyQ.GetExpStateInvalid(s.ctx)
-	if err != nil && !isCancelledError(err) {
-		log.WithField("err", err).Error("Error getting state invalid value")
+	if err != nil {
+		if !isCancelledError(err) {
+			log.WithField("err", err).Error("Error getting state invalid value")
+		}
+		return
 	}
 
 	// Run verification routine only when...
@@ -661,6 +678,71 @@ func (s *system) maybeVerifyState(lastIngestedLedger uint32) {
 			}
 		}()
 	}
+}
+
+func (s *system) maybeReapLookupTables(lastIngestedLedger uint32) {
+	if !s.config.EnableReapLookupTables {
+		return
+	}
+
+	// Check if lastIngestedLedger is the last one available in the backend
+	sequence, err := s.ledgerBackend.GetLatestLedgerSequence(s.ctx)
+	if err != nil {
+		log.WithField("err", err).Error("Error getting latest ledger sequence from backend")
+		return
+	}
+
+	if sequence != lastIngestedLedger {
+		// Catching up - skip reaping tables in this cycle.
+		return
+	}
+
+	err = s.historyQ.Begin()
+	if err != nil {
+		log.WithField("err", err).Error("Error starting a transaction")
+		return
+	}
+	defer s.historyQ.Rollback()
+
+	// If so block ingestion in the cluster to reap tables
+	_, err = s.historyQ.GetLastLedgerIngest(s.ctx)
+	if err != nil {
+		log.WithField("err", err).Error(getLastIngestedErrMsg)
+		return
+	}
+
+	// Make sure reaping will not take more than 5s, which is average ledger
+	// closing time.
+	ctx, cancel := context.WithTimeout(s.ctx, 5*time.Second)
+	defer cancel()
+
+	reapStart := time.Now()
+	deletedCount, newOffsets, err := s.historyQ.ReapLookupTables(ctx, s.reapOffsets)
+	if err != nil {
+		log.WithField("err", err).Warn("Error reaping lookup tables")
+		return
+	}
+
+	err = s.historyQ.Commit()
+	if err != nil {
+		log.WithField("err", err).Error("Error commiting a transaction")
+		return
+	}
+
+	totalDeleted := int64(0)
+	reapLog := log
+	for table, c := range deletedCount {
+		totalDeleted += c
+		reapLog = reapLog.WithField(table, c)
+	}
+
+	if totalDeleted > 0 {
+		reapLog.Info("Reaper deleted rows from lookup tables")
+	}
+
+	s.reapOffsets = newOffsets
+	reapDuration := time.Since(reapStart).Seconds()
+	s.Metrics().LedgerIngestionReapLookupTablesDuration.Observe(float64(reapDuration))
 }
 
 func (s *system) incrementStateVerificationErrors() int {
