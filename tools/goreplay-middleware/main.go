@@ -1,4 +1,27 @@
-// Based on https://github.com/buger/goreplay/blob/master/examples/middleware/token_modifier.go
+// The code below is a goreplay middleware used for regression testing current
+// vs next Horizon version. The middleware system of goreplay is rather simple:
+// it streams one of 3 message types to stdin: request (HTTP headers),
+// original response and replayed response. On request we can modify the request
+// and send it to stdout but we don't use this feature here: we send request
+// to mirroring target as is. Finally, everything printed to stderr is the
+// middleware log, this is where we put the information about the request if the
+// diff is found.
+//
+// Diagram below is copied from https://github.com/buger/goreplay/wiki/Middleware
+// where more information about the middlewares can be found.
+//
+//                    Original request      +--------------+
+// +-------------+----------STDIN---------->+              |
+// |  Gor input  |                          |  Middleware  |
+// +-------------+----------STDIN---------->+              |
+//                    Original response (1) +------+---+---+
+//                                                 |   ^
+// +-------------+    Modified request             v   |
+// | Gor output  +<---------STDOUT-----------------+   |
+// +-----+-------+                                     |
+//       |                                             |
+//       |            Replayed response                |
+//       +------------------STDIN----------------->----+
 package main
 
 import (
@@ -129,7 +152,6 @@ func process(stderr, stdout io.Writer, buf []byte) {
 			} else {
 				if !req.ResponseEquals() {
 					// TODO in the future publish the results to S3 for easier processing
-					// stderr.WriteString("MISMATCH " + req.SerializeBase64() + "\n")
 					log.WithFields(log.F{
 						"expected": req.OriginalBody(),
 						"actual":   req.MirroredBody(),
