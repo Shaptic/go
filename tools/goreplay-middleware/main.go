@@ -7,21 +7,8 @@
 // middleware log, this is where we put the information about the request if the
 // diff is found.
 //
-// Diagram below is copied from https://github.com/buger/goreplay/wiki/Middleware
-// where more information about the middlewares can be found.
-//
-//                    Original request      +--------------+
-// +-------------+----------STDIN---------->+              |
-// |  Gor input  |                          |  Middleware  |
-// +-------------+----------STDIN---------->+              |
-//                    Original response (1) +------+---+---+
-//                                                 |   ^
-// +-------------+    Modified request             v   |
-// | Gor output  +<---------STDOUT-----------------+   |
-// +-----+-------+                                     |
-//       |                                             |
-//       |            Replayed response                |
-//       +------------------STDIN----------------->----+
+// More information and diagrams about the middlewares can be found here:
+// https://github.com/buger/goreplay/wiki/Middleware
 package main
 
 import (
