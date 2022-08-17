@@ -60,7 +60,7 @@ require (
 	github.com/ajg/form v0.0.0-20160822230020-523a5da1a92f // indirect
 	github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973 // indirect
 	github.com/buger/goreplay v1.3.2
-	github.com/davecgh/go-spew v1.1.1
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fatih/structs v1.0.0 // indirect
 	github.com/gavv/monotime v0.0.0-20161010190848-47d58efa6955 // indirect
 	github.com/gobuffalo/packr v1.12.1 // indirect
