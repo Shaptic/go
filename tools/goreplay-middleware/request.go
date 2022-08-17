@@ -68,11 +68,7 @@ func (r *Request) IsIgnored() bool {
 	}
 
 	acceptHeader := proto.Header(r.Headers, []byte("Accept"))
-	if strings.Contains(string(acceptHeader), "event-stream") {
-		return true
-	}
-
-	return false
+	return strings.Contains(string(acceptHeader), "event-stream")
 }
 
 func (r *Request) ResponseEquals() bool {
