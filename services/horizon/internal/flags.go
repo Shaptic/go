@@ -25,6 +25,8 @@ import (
 const (
 	// DatabaseURLFlagName is the command line flag for configuring the Horizon postgres URL
 	DatabaseURLFlagName = "db-url"
+	// IngestFlagName is the command line flag for enabling ingestion on the Horizon instance
+	IngestFlagName = "ingest"
 	// StellarCoreDBURLFlagName is the command line flag for configuring the postgres Stellar Core URL
 	StellarCoreDBURLFlagName = "stellar-core-db-url"
 	// StellarCoreURLFlagName is the command line flag for configuring the URL fore Stellar Core HTTP endpoint
@@ -390,7 +392,7 @@ func Flags() (*Config, support.ConfigOptions) {
 			ConfigKey:   &config.MaxAssetsPerPathRequest,
 			OptType:     types.Int,
 			FlagDefault: int(15),
-			Usage:       "the maximum number of assets in '/paths/strict-send' and '/paths/strict-recieve' endpoints",
+			Usage:       "the maximum number of assets in '/paths/strict-send' and '/paths/strict-receive' endpoints",
 		},
 		&support.ConfigOption{
 			Name:        "disable-pool-path-finding",
@@ -456,7 +458,7 @@ func Flags() (*Config, support.ConfigOptions) {
 			Usage:     "TLS private key file to use for securing connections to horizon",
 		},
 		&support.ConfigOption{
-			Name:        "ingest",
+			Name:        IngestFlagName,
 			ConfigKey:   &config.Ingest,
 			OptType:     types.Bool,
 			FlagDefault: true,

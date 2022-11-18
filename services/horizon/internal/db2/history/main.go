@@ -879,6 +879,24 @@ func (q Q) ReapLookupTables(ctx context.Context, offsets map[string]int64) (
 				objectField: "history_account_id",
 			},
 		},
+		"history_assets": {
+			{
+				name:        "history_trades",
+				objectField: "base_asset_id",
+			},
+			{
+				name:        "history_trades",
+				objectField: "counter_asset_id",
+			},
+			{
+				name:        "history_trades_60000",
+				objectField: "base_asset_id",
+			},
+			{
+				name:        "history_trades_60000",
+				objectField: "counter_asset_id",
+			},
+		},
 		"history_claimable_balances": {
 			{
 				name:        "history_operation_claimable_balances",
@@ -950,8 +968,8 @@ func (q Q) ReapLookupTables(ctx context.Context, offsets map[string]int64) (
 //	     from history_claimable_balances hcb where id > 1000 order by id limit 100)
 //	 as sub where c1 IS NULL and c2 IS NULL and 1=1);
 //
-// In short it checks the 100 rows omiting 1000 row of history_claimable_balances
-// and counts occurences of each row in corresponding history tables.
+// In short it checks the 100 rows omitting 1000 row of history_claimable_balances
+// and counts occurrences of each row in corresponding history tables.
 // If there are no history rows for a given id, the row in
 // history_claimable_balances is removed.
 //
