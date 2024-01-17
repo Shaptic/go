@@ -60,7 +60,10 @@ func NewIngester(config IngesterConfig) (Ingester, error) {
 	}
 
 	if parsed.Scheme != "file" { // otherwise, already on-disk
-		cache, errr := storage.MakeOnDiskCache(source, config.CacheDir, uint(config.CacheSize))
+		cache, errr := storage.MakeOnDiskCache(source, storage.OnDiskCacheConfig{
+			Path:     config.CacheDir,
+			MaxFiles: uint(config.CacheSize),
+		})
 
 		if errr != nil { // non-fatal: warn but continue w/o cache
 			log.WithField("path", config.CacheDir).WithError(errr).

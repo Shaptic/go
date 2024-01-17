@@ -74,6 +74,7 @@ type ArchiveInterface interface {
 	GetXdrStreamForHash(hash Hash) (*XdrStream, error)
 	GetXdrStream(pth string) (*XdrStream, error)
 	GetCheckpointManager() CheckpointManager
+	Close() error
 }
 
 var _ ArchiveInterface = &Archive{}
@@ -363,6 +364,10 @@ func (a *Archive) GetXdrStream(pth string) (*XdrStream, error) {
 		return nil, err
 	}
 	return NewXdrGzStream(rdr)
+}
+
+func (a *Archive) Close() error {
+	return a.backend.Close()
 }
 
 func Connect(u string, opts ArchiveOptions) (*Archive, error) {

@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	"io/ioutil"
 	"strings"
 	"sync"
 
@@ -46,13 +45,13 @@ func (b *MockArchiveBackend) GetFile(pth string) (io.ReadCloser, error) {
 	if !ok {
 		return nil, errors.New("no such file: " + pth)
 	}
-	return ioutil.NopCloser(bytes.NewReader(buf)), nil
+	return io.NopCloser(bytes.NewReader(buf)), nil
 }
 
 func (b *MockArchiveBackend) PutFile(pth string, in io.ReadCloser) error {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
-	buf, e := ioutil.ReadAll(in)
+	buf, e := io.ReadAll(in)
 	if e != nil {
 		return e
 	}

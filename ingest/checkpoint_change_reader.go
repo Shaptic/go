@@ -563,6 +563,7 @@ func (r *CheckpointChangeReader) error(err error) readResult {
 
 func (r *CheckpointChangeReader) close() {
 	close(r.done)
+	r.archive.Close()
 }
 
 // Progress returns progress reading all buckets in percents.

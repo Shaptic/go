@@ -762,14 +762,21 @@ func (c *CaptiveStellarCore) Close() error {
 	// after the CaptiveStellarCore context is canceled all subsequent calls to PrepareRange() will fail
 	c.cancel()
 
-	// TODO: Sucks to ignore the error here, but no worse than it was before,
-	// so...
+	// TODO: Sucks to ignore the error here, but no worse than it was before, so...
 	if c.ledgerHashStore != nil {
 		c.ledgerHashStore.Close()
 	}
 
+	var err error
 	if c.stellarCoreRunner != nil {
-		return c.stellarCoreRunner.close()
+		err = c.stellarCoreRunner.close()
 	}
-	return nil
+
+	// Underlying archive may need to be closed, too.
+	archiveErr := c.archive.Close()
+	if err == nil {
+		err = archiveErr
+	}
+
+	return err
 }

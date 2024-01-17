@@ -131,3 +131,15 @@ func (pa ArchivePool) GetXdrStream(pth string) (*XdrStream, error) {
 func (pa ArchivePool) GetCheckpointManager() CheckpointManager {
 	return pa.GetAnyArchive().GetCheckpointManager()
 }
+
+func (pa ArchivePool) Close() error {
+	// Closes all archives, but returns the first error encountered (if any)
+	var anyErr error
+	for _, pool := range pa {
+		err := pool.Close()
+		if anyErr == nil {
+			anyErr = err
+		}
+	}
+	return anyErr
+}

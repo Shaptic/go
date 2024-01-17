@@ -3,7 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -136,7 +136,11 @@ func BuildCache(ledgerSource, cacheDir string, start uint32, count uint32, repai
 	store, err := storage.ConnectBackend(ledgerSource, storage.ConnectOptions{
 		Context: ctx,
 		Wrap: func(store storage.Storage) (storage.Storage, error) {
-			return storage.MakeOnDiskCache(store, cacheDir, uint(count))
+			return storage.MakeOnDiskCache(store, storage.OnDiskCacheConfig{
+				Path:     cacheDir,
+				MaxFiles: uint(count),
+				Log:      log,
+			})
 		},
 	})
 	if err != nil {
@@ -230,7 +234,7 @@ func PurgeCache(cacheDir string) error {
 }
 
 func ShowCache(cacheDir string) error {
-	files, err := ioutil.ReadDir(filepath.Join(cacheDir, "ledgers"))
+	files, err := io.ReadDir(filepath.Join(cacheDir, "ledgers"))
 	if err != nil {
 		log.Errorf("Failed to read cache: %v", err)
 		return err
