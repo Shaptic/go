@@ -243,7 +243,11 @@ func NewSystem(config Config) (System, error) {
 				UserAgent: fmt.Sprintf("horizon/%s golang/%s", apkg.Version(), runtime.Version()),
 				Wrap: func(upstream storage.Storage) (storage.Storage, error) {
 					p := path.Join(config.CaptiveCoreStoragePath, "history-archive-cache")
-					return storage.MakeOnDiskCache(upstream, p, 0)
+					return storage.MakeOnDiskCache(upstream, storage.OnDiskCacheConfig{
+						Path:      p,
+						MaxFiles:  100,
+						Ephemeral: true,
+					})
 				},
 			},
 		},
@@ -788,6 +792,7 @@ func (s *system) Shutdown() {
 	}
 	s.stateVerificationMutex.Unlock()
 	s.cancel()
+
 	// wait for ingestion state machine to terminate
 	s.wg.Wait()
 	s.historyQ.Close()
