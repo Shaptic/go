@@ -3,7 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -234,7 +234,7 @@ func PurgeCache(cacheDir string) error {
 }
 
 func ShowCache(cacheDir string) error {
-	files, err := io.ReadDir(filepath.Join(cacheDir, "ledgers"))
+	files, err := ioutil.ReadDir(filepath.Join(cacheDir, "ledgers"))
 	if err != nil {
 		log.Errorf("Failed to read cache: %v", err)
 		return err
