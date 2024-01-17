@@ -9,6 +9,8 @@ import (
 	"github.com/stellar/go/historyarchive"
 	"github.com/stellar/go/support/errors"
 	"github.com/stellar/go/xdr"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // readResult is the result of reading a bucket value
@@ -311,9 +313,13 @@ func (r *CheckpointChangeReader) streamBucketContents(hash historyarchive.Hash, 
 	defer func() {
 		err := rdr.Close()
 		if err != nil {
-			r.readChan <- r.error(errors.Wrap(err, "Error closing xdr stream"))
+			// FIXME: When using a cache, this errors due to a double-close
+			// which isn't really a real error but is strictly incorrect.
+			// r.readChan <- r.error(errors.Wrap(err, "Error closing xdr stream"))
+			log.WithError(err).Info("Error closing xdr stream")
+
 			// Stop streaming from the rest of the files.
-			r.Close()
+			// r.Close()
 		}
 	}()
 

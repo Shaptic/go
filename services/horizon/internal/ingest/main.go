@@ -6,6 +6,7 @@ package ingest
 import (
 	"context"
 	"fmt"
+	"path"
 	"runtime"
 	"sync"
 	"time"
@@ -240,6 +241,10 @@ func NewSystem(config Config) (System, error) {
 			ConnectOptions: storage.ConnectOptions{
 				Context:   ctx,
 				UserAgent: fmt.Sprintf("horizon/%s golang/%s", apkg.Version(), runtime.Version()),
+				Wrap: func(upstream storage.Storage) (storage.Storage, error) {
+					p := path.Join(config.CaptiveCoreStoragePath, "history-archive-cache")
+					return storage.MakeOnDiskCache(upstream, p, 0)
+				},
 			},
 		},
 	)
