@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/url"
 	"path"
 	"regexp"
@@ -149,8 +148,8 @@ func (a *Archive) PutPathHAS(path string, has HistoryArchiveState, opts *Command
 	if err != nil {
 		return err
 	}
-	return a.backend.PutFile(path,
-		ioutil.NopCloser(bytes.NewReader(buf)))
+
+	return a.backend.PutFile(path, io.NopCloser(bytes.NewReader(buf)))
 }
 
 func (a *Archive) BucketExists(bucket Hash) (bool, error) {
