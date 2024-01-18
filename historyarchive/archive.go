@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/url"
 	"path"
 	"regexp"
@@ -51,6 +50,8 @@ type ConnectOptions struct {
 	CheckpointFrequency uint32
 	// UserAgent is the value of `User-Agent` header. Applicable only for HTTP client.
 	UserAgent string
+	// Cache specifies whether or not bucket files should be cached on-disk.
+	CacheConfig CacheOptions
 }
 
 type Ledger struct {
@@ -115,6 +116,7 @@ type Archive struct {
 	checkpointManager CheckpointManager
 
 	backend ArchiveBackend
+	cache   *ArchiveBucketCache
 }
 
 func (arch *Archive) GetCheckpointManager() CheckpointManager {
@@ -161,8 +163,7 @@ func (a *Archive) PutPathHAS(path string, has HistoryArchiveState, opts *Command
 	if err != nil {
 		return err
 	}
-	return a.backend.PutFile(path,
-		ioutil.NopCloser(bytes.NewReader(buf)))
+	return a.backend.PutFile(path, io.NopCloser(bytes.NewReader(buf)))
 }
 
 func (a *Archive) BucketExists(bucket Hash) (bool, error) {
@@ -371,7 +372,15 @@ func (a *Archive) GetXdrStream(pth string) (*XdrStream, error) {
 	if !strings.HasSuffix(pth, ".xdr.gz") {
 		return nil, errors.New("File has non-.xdr.gz suffix: " + pth)
 	}
-	rdr, err := a.backend.GetFile(pth)
+
+	var err error
+	var rdr io.ReadCloser
+	if a.cache != nil {
+		rdr, err = a.cache.GetFile(pth, a.backend)
+	} else {
+		rdr, err = a.backend.GetFile(pth)
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -391,6 +400,7 @@ func Connect(u string, opts ConnectOptions) (*Archive, error) {
 		expectTxResultSetHashes: make(map[uint32]Hash),
 		actualTxResultSetHashes: make(map[uint32]Hash),
 		checkpointManager:       NewCheckpointManager(opts.CheckpointFrequency),
+		cache:                   nil,
 	}
 	for _, cat := range Categories() {
 		arch.checkpointFiles[cat] = make(map[uint32]bool)
@@ -426,7 +436,21 @@ func Connect(u string, opts ConnectOptions) (*Archive, error) {
 	} else {
 		err = errors.New("unknown URL scheme: '" + parsed.Scheme + "'")
 	}
-	return &arch, err
+
+	if err != nil {
+		return &arch, err
+	}
+
+	if opts.CacheConfig.Cache {
+		cache, innerErr := MakeArchiveBucketCache(opts.CacheConfig)
+		if innerErr != nil {
+			return &arch, innerErr
+		}
+
+		arch.cache = cache
+	}
+
+	return &arch, nil
 }
 
 func MustConnect(u string, opts ConnectOptions) *Archive {
