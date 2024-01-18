@@ -10,7 +10,8 @@ import (
 )
 
 type CacheOptions struct {
-	Cache    bool
+	Cache bool
+
 	Path     string
 	MaxFiles uint
 }
@@ -21,6 +22,8 @@ type ArchiveBucketCache struct {
 	log  *log.Entry
 }
 
+// MakeArchiveBucketCache creates a cache on the disk at the given path that
+// acts as an LRU cache, mimicking a particular upstream.
 func MakeArchiveBucketCache(opts CacheOptions) (*ArchiveBucketCache, error) {
 	log_ := log.
 		WithField("subservice", "fs-cache").
@@ -48,8 +51,10 @@ func MakeArchiveBucketCache(opts CacheOptions) (*ArchiveBucketCache, error) {
 }
 
 // GetFile retrieves the file contents from the local cache if present.
-// Otherwise, it returns the same result that the wrapped backend returns and
-// adds that result into the local cache, if possible.
+// Otherwise, it returns the same result as the upstream, adding that result
+// into the local cache if possible. It returns a 3-tuple of a reader (which may
+// be nil on an error), an indication of whether or not it was *found* in the
+// cache, and any error.
 func (abc *ArchiveBucketCache) GetFile(
 	filepath string,
 	upstream ArchiveBackend,
@@ -117,10 +122,9 @@ func (abc *ArchiveBucketCache) Close() error {
 	return os.RemoveAll(abc.path)
 }
 
-// Evict removes a file from the cache and the filesystem, but does not affect
-// the upstream backend. It isn't part of the `Storage` interface.
+// Evict removes a file from the cache and the filesystem.
 func (abc *ArchiveBucketCache) Evict(filepath string) {
-	log.WithField("key", filepath).Info("evicting file")
+	log.WithField("key", filepath).Info("Evicting file from the disk")
 	abc.lru.Remove(path.Join(abc.path, filepath))
 }
 
@@ -163,7 +167,7 @@ func NameLockfile(file string) string {
 type trc struct {
 	io.Reader
 	close  func() error
-	closed bool
+	closed bool // prevents a double-close
 }
 
 func (t trc) Close() error {

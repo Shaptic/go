@@ -50,7 +50,7 @@ type ConnectOptions struct {
 	CheckpointFrequency uint32
 	// UserAgent is the value of `User-Agent` header. Applicable only for HTTP client.
 	UserAgent string
-	// Cache specifies whether or not bucket files should be cached on-disk.
+	// CacheConfig controls how/if bucket files are cached on the disk.
 	CacheConfig CacheOptions
 }
 
