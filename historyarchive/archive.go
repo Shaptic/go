@@ -167,7 +167,7 @@ func (a *Archive) PutPathHAS(path string, has HistoryArchiveState, opts *Command
 }
 
 func (a *Archive) BucketExists(bucket Hash) (bool, error) {
-	return a.backend.Exists(BucketPath(bucket))
+	return a.cachedExists(BucketPath(bucket))
 }
 
 func (a *Archive) BucketSize(bucket Hash) (int64, error) {
@@ -382,10 +382,26 @@ func (a *Archive) GetXdrStream(pth string) (*XdrStream, error) {
 
 func (a *Archive) cachedGet(pth string) (io.ReadCloser, error) {
 	if a.cache != nil {
-		return a.cache.GetFile(pth, a.backend)
+		rdr, err := a.cache.GetFile(pth, a.backend)
+		if err == nil {
+			return rdr, nil
+		}
+
+		// If there's an error, retry with the uncached backend.
+		a.cache.Evict(pth)
 	}
 
 	return a.backend.GetFile(pth)
+}
+
+func (a *Archive) cachedExists(pth string) (bool, error) {
+	if a.cache != nil {
+		if a.cache.Exists(pth) {
+			return true, nil
+		}
+	}
+
+	return a.backend.Exists(pth)
 }
 
 func Connect(u string, opts ConnectOptions) (*Archive, error) {

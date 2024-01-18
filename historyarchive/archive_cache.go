@@ -1,7 +1,6 @@
 package historyarchive
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"path"
@@ -95,12 +94,16 @@ func (abc *ArchiveBucketCache) GetFile(
 	if err != nil {
 		// Uh-oh, the cache and the disk are not in sync somehow? Let's evict
 		// this value and try again (recurse) w/ the remote version.
-		L.WithError(err).Warn("Opening cached ledger failed")
+		L.WithError(err).Warn("Opening cached file failed")
 		abc.lru.Remove(localPath)
 		return abc.GetFile(filepath, upstream)
 	}
 
 	return local, nil
+}
+
+func (abc *ArchiveBucketCache) Exists(filepath string) bool {
+	return abc.lru.Contains(path.Join(abc.path, filepath))
 }
 
 // Close purges the cache, then forwards the call to the wrapped backend.
@@ -158,7 +161,8 @@ func NameLockfile(file string) string {
 
 type trc struct {
 	io.Reader
-	close func() error
+	close  func() error
+	closed bool
 }
 
 func (t trc) Close() error {
@@ -166,23 +170,28 @@ func (t trc) Close() error {
 }
 
 func teeReadCloser(r io.ReadCloser, w io.WriteCloser, onClose func() error) io.ReadCloser {
-	fmt.Printf("Making teeReadCloser onto %v and %v\n", r, w)
-	return trc{
+	closer := trc{
 		Reader: io.TeeReader(r, w),
-		close: func() error {
-			// Always run all closers, but return the first error
-			err1 := r.Close()
-			err2 := w.Close()
-			err3 := onClose()
-
-			fmt.Println("Errors were:", err1, err2, err3)
-
-			if err1 != nil {
-				return err1
-			} else if err2 != nil {
-				return err2
-			}
-			return err3
-		},
+		closed: false,
 	}
+	closer.close = func() error {
+		if closer.closed {
+			return nil
+		}
+
+		// Always run all closers, but return the first error
+		err1 := r.Close()
+		err2 := w.Close()
+		err3 := onClose()
+
+		closer.closed = true
+		if err1 != nil {
+			return err1
+		} else if err2 != nil {
+			return err2
+		}
+		return err3
+	}
+
+	return closer
 }
