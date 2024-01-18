@@ -662,6 +662,7 @@ func TestGetLedgers(t *testing.T) {
 	assert.EqualValues(t, 3, stats.GetDownloads())
 	// but requests increase because of 3 fetches to categories
 	assert.EqualValues(t, 10, stats.GetRequests())
+	assert.EqualValues(t, 3, stats.GetCacheHits())
 	for i, seq := range []uint32{1000, 1001, 1002} {
 		ledger := ledgers[seq]
 		assertXdrEquals(t, ledgerHeaders[i], ledger.Header)
