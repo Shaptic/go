@@ -395,8 +395,8 @@ func (a *Archive) ListCategoryCheckpoints(cat string, pth string) (chan uint32, 
 	ext := categoryExt(cat)
 	rx := regexp.MustCompile(cat + hexPrefixPat + cat +
 		"-([0-9a-f]{8})\\." + regexp.QuoteMeta(ext) + "$")
-	sch, errs := a.backend.ListFiles(path.Join(cat, pth))
 	a.stats.incrementRequests()
+	sch, errs := a.backend.ListFiles(path.Join(cat, pth))
 	ch := make(chan uint32)
 	errs = makeErrorPump(errs)
 
@@ -442,7 +442,10 @@ func (a *Archive) GetXdrStream(pth string) (*XdrStream, error) {
 
 func (a *Archive) cachedGet(pth string) (io.ReadCloser, error) {
 	if a.cache != nil {
-		rdr, err := a.cache.GetFile(pth, a.backend)
+		rdr, foundInCache, err := a.cache.GetFile(pth, a.backend)
+		if !foundInCache {
+			a.stats.incrementDownloads()
+		}
 		if err == nil {
 			return rdr, nil
 		}
@@ -456,10 +459,8 @@ func (a *Archive) cachedGet(pth string) (io.ReadCloser, error) {
 }
 
 func (a *Archive) cachedExists(pth string) (bool, error) {
-	if a.cache != nil {
-		if a.cache.Exists(pth) {
-			return true, nil
-		}
+	if a.cache != nil && a.cache.Exists(pth) {
+		return true, nil
 	}
 
 	a.stats.incrementRequests()

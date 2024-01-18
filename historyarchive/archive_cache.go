@@ -53,7 +53,7 @@ func MakeArchiveBucketCache(opts CacheOptions) (*ArchiveBucketCache, error) {
 func (abc *ArchiveBucketCache) GetFile(
 	filepath string,
 	upstream ArchiveBackend,
-) (io.ReadCloser, error) {
+) (io.ReadCloser, bool, error) {
 	L := abc.log.WithField("key", filepath)
 	localPath := path.Join(abc.path, filepath)
 
@@ -61,9 +61,10 @@ func (abc *ArchiveBucketCache) GetFile(
 	// update the cache, as it means there's an in-progress sync of the same
 	// file.
 	_, statErr := os.Stat(NameLockfile(localPath))
-	if statErr == nil {
+	if statErr == nil || os.IsExist(statErr) {
 		L.Info("Incomplete file in on-disk cache: deferring")
-		return upstream.GetFile(filepath)
+		reader, err := upstream.GetFile(filepath)
+		return reader, false, err
 	} else if _, ok := abc.lru.Get(localPath); !ok {
 		L.Info("File does not exist in the cache: downloading")
 
@@ -71,7 +72,7 @@ func (abc *ArchiveBucketCache) GetFile(
 		// into the cache, and write it to disk.
 		remote, err := upstream.GetFile(filepath)
 		if err != nil {
-			return remote, err
+			return remote, false, err
 		}
 
 		local, err := abc.createLocal(filepath)
@@ -79,13 +80,13 @@ func (abc *ArchiveBucketCache) GetFile(
 			// If there's some local FS error, we can still continue with the
 			// remote version, so just log it and continue.
 			L.WithError(err).Warn("Creating cache file failed")
-			return remote, nil
+			return remote, false, nil
 		}
 
 		return teeReadCloser(remote, local, func() error {
 			L.Debug("Download complete: removing lockfile")
 			return os.Remove(NameLockfile(localPath))
-		}), nil
+		}), false, nil
 	}
 
 	L.Info("Found file in cache")
@@ -99,7 +100,7 @@ func (abc *ArchiveBucketCache) GetFile(
 		return abc.GetFile(filepath, upstream)
 	}
 
-	return local, nil
+	return local, true, nil
 }
 
 func (abc *ArchiveBucketCache) Exists(filepath string) bool {
