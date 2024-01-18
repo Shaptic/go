@@ -6,7 +6,6 @@ package ingest
 import (
 	"context"
 	"fmt"
-	"os"
 	"path"
 	"runtime"
 	"sync"
@@ -242,20 +241,11 @@ func NewSystem(config Config) (System, error) {
 			ConnectOptions: storage.ConnectOptions{
 				Context:   ctx,
 				UserAgent: fmt.Sprintf("horizon/%s golang/%s", apkg.Version(), runtime.Version()),
-				Wrap: func(upstream storage.Storage) (storage.Storage, error) {
-					p := path.Join(config.CaptiveCoreStoragePath, "history-archive-cache")
-
-					if _, existErr := os.Stat(p); existErr == nil || !os.IsNotExist(existErr) {
-						log.Warnf("History archive cache exists (%s): removing", p)
-						os.RemoveAll(p)
-					}
-
-					return storage.MakeOnDiskCache(upstream, storage.OnDiskCacheConfig{
-						Path:      p,
-						MaxFiles:  100,
-						Ephemeral: true,
-					})
-				},
+			},
+			CacheConfig: historyarchive.CacheOptions{
+				Cache:    true,
+				Path:     path.Join(config.CaptiveCoreStoragePath, "bucket-cache"),
+				MaxFiles: 100,
 			},
 		},
 	)
