@@ -16,7 +16,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	log "github.com/sirupsen/logrus"
 
@@ -59,60 +58,6 @@ type Ledger struct {
 	Header            xdr.LedgerHeaderHistoryEntry
 	Transaction       xdr.TransactionHistoryEntry
 	TransactionResult xdr.TransactionHistoryResultEntry
-}
-
-// golang will auto wrap them back to 0 if they overflow after addition.
-type archiveStats struct {
-	requests      atomic.Uint32
-	fileDownloads atomic.Uint32
-	fileUploads   atomic.Uint32
-	cacheHits     atomic.Uint32
-	backendName   string
-}
-
-type ArchiveStats interface {
-	GetRequests() uint32
-	GetDownloads() uint32
-	GetUploads() uint32
-	GetCacheHits() uint32
-	GetBackendName() string
-}
-
-func (as *archiveStats) incrementDownloads() {
-	as.fileDownloads.Add(1)
-	as.incrementRequests()
-}
-
-func (as *archiveStats) incrementUploads() {
-	as.fileUploads.Add(1)
-	as.incrementRequests()
-}
-
-func (as *archiveStats) incrementRequests() {
-	as.requests.Add(1)
-}
-
-func (as *archiveStats) incrementCacheHits() {
-	as.cacheHits.Add(1)
-}
-
-func (as *archiveStats) GetRequests() uint32 {
-	return as.requests.Load()
-}
-
-func (as *archiveStats) GetDownloads() uint32 {
-	return as.fileDownloads.Load()
-}
-
-func (as *archiveStats) GetUploads() uint32 {
-	return as.fileUploads.Load()
-}
-
-func (as *archiveStats) GetBackendName() string {
-	return as.backendName
-}
-func (as *archiveStats) GetCacheHits() uint32 {
-	return as.cacheHits.Load()
 }
 
 type ArchiveBackend interface {
