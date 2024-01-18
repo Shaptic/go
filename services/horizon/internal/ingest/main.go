@@ -162,6 +162,9 @@ type Metrics struct {
 
 	// ProcessorsRunDurationSummary exposes processors run durations.
 	ProcessorsRunDurationSummary *prometheus.SummaryVec
+
+	// ArchiveRequestCounter counts how many http requests are sent to history server
+	HistoryArchiveStatsCounter *prometheus.CounterVec
 }
 
 type System interface {
@@ -171,10 +174,11 @@ type System interface {
 	StressTest(numTransactions, changesPerTransaction int) error
 	VerifyRange(fromLedger, toLedger uint32, verifyState bool) error
 	BuildState(sequence uint32, skipChecks bool) error
-	ReingestRange(ledgerRanges []history.LedgerRange, force bool) error
+	ReingestRange(ledgerRanges []history.LedgerRange, force bool, rebuildTradeAgg bool) error
 	BuildGenesisState() error
 	Shutdown()
 	GetCurrentState() State
+	RebuildTradeAggregationBuckets(fromLedger, toLedger uint32) error
 }
 
 type system struct {
@@ -396,6 +400,14 @@ func (s *system) initMetrics() {
 		},
 		[]string{"name"},
 	)
+
+	s.metrics.HistoryArchiveStatsCounter = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "horizon", Subsystem: "ingest", Name: "history_archive_stats_total",
+			Help: "counters of different history archive stats",
+		},
+		[]string{"source", "type"},
+	)
 }
 
 func (s *system) GetCurrentState() State {
@@ -421,6 +433,7 @@ func (s *system) RegisterMetrics(registry *prometheus.Registry) {
 	registry.MustRegister(s.metrics.ProcessorsRunDuration)
 	registry.MustRegister(s.metrics.ProcessorsRunDurationSummary)
 	registry.MustRegister(s.metrics.StateVerifyLedgerEntriesCount)
+	registry.MustRegister(s.metrics.HistoryArchiveStatsCounter)
 	s.ledgerBackend = ledgerbackend.WithMetrics(s.ledgerBackend, registry, "horizon")
 }
 
@@ -515,7 +528,7 @@ func validateRanges(ledgerRanges []history.LedgerRange) error {
 
 // ReingestRange runs the ingestion pipeline on the range of ledgers ingesting
 // history data only.
-func (s *system) ReingestRange(ledgerRanges []history.LedgerRange, force bool) error {
+func (s *system) ReingestRange(ledgerRanges []history.LedgerRange, force bool, rebuildTradeAgg bool) error {
 	if err := validateRanges(ledgerRanges); err != nil {
 		return err
 	}
@@ -536,8 +549,18 @@ func (s *system) ReingestRange(ledgerRanges []history.LedgerRange, force bool) e
 		if err != nil {
 			return err
 		}
+		if rebuildTradeAgg {
+			err = s.RebuildTradeAggregationBuckets(cur.StartSequence, cur.EndSequence)
+			if err != nil {
+				return errors.Wrap(err, "Error rebuilding trade aggregations")
+			}
+		}
 	}
 	return nil
+}
+
+func (s *system) RebuildTradeAggregationBuckets(fromLedger, toLedger uint32) error {
+	return s.historyQ.RebuildTradeAggregationBuckets(s.ctx, fromLedger, toLedger, s.config.RoundingSlippageFilter)
 }
 
 // BuildGenesisState runs the ingestion pipeline on genesis ledger. Transitions

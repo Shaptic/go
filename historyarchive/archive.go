@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	log "github.com/sirupsen/logrus"
 
@@ -60,6 +61,51 @@ type Ledger struct {
 	TransactionResult xdr.TransactionHistoryResultEntry
 }
 
+// golang will auto wrap them back to 0 if they overflow after addition.
+type archiveStats struct {
+	requests      atomic.Uint32
+	fileDownloads atomic.Uint32
+	fileUploads   atomic.Uint32
+	backendName   string
+}
+
+type ArchiveStats interface {
+	GetRequests() uint32
+	GetDownloads() uint32
+	GetUploads() uint32
+	GetBackendName() string
+}
+
+func (as *archiveStats) incrementDownloads() {
+	as.fileDownloads.Add(1)
+	as.incrementRequests()
+}
+
+func (as *archiveStats) incrementUploads() {
+	as.fileUploads.Add(1)
+	as.incrementRequests()
+}
+
+func (as *archiveStats) incrementRequests() {
+	as.requests.Add(1)
+}
+
+func (as *archiveStats) GetRequests() uint32 {
+	return as.requests.Load()
+}
+
+func (as *archiveStats) GetDownloads() uint32 {
+	return as.fileDownloads.Load()
+}
+
+func (as *archiveStats) GetUploads() uint32 {
+	return as.fileUploads.Load()
+}
+
+func (as *archiveStats) GetBackendName() string {
+	return as.backendName
+}
+
 type ArchiveBackend interface {
 	Exists(path string) (bool, error)
 	Size(path string) (int64, error)
@@ -88,6 +134,7 @@ type ArchiveInterface interface {
 	GetXdrStreamForHash(hash Hash) (*XdrStream, error)
 	GetXdrStream(pth string) (*XdrStream, error)
 	GetCheckpointManager() CheckpointManager
+	GetStats() []ArchiveStats
 }
 
 var _ ArchiveInterface = &Archive{}
@@ -117,6 +164,11 @@ type Archive struct {
 
 	backend ArchiveBackend
 	cache   *ArchiveBucketCache
+	stats   archiveStats
+}
+
+func (arch *Archive) GetStats() []ArchiveStats {
+	return []ArchiveStats{&arch.stats}
 }
 
 func (arch *Archive) GetCheckpointManager() CheckpointManager {
@@ -126,6 +178,7 @@ func (arch *Archive) GetCheckpointManager() CheckpointManager {
 func (a *Archive) GetPathHAS(path string) (HistoryArchiveState, error) {
 	var has HistoryArchiveState
 	rdr, err := a.backend.GetFile(path)
+	a.stats.incrementDownloads()
 	if err != nil {
 		return has, err
 	}
@@ -152,6 +205,7 @@ func (a *Archive) GetPathHAS(path string) (HistoryArchiveState, error) {
 
 func (a *Archive) PutPathHAS(path string, has HistoryArchiveState, opts *CommandOptions) error {
 	exists, err := a.backend.Exists(path)
+	a.stats.incrementRequests()
 	if err != nil {
 		return err
 	}
@@ -163,6 +217,7 @@ func (a *Archive) PutPathHAS(path string, has HistoryArchiveState, opts *Command
 	if err != nil {
 		return err
 	}
+	a.stats.incrementUploads()
 	return a.backend.PutFile(path, io.NopCloser(bytes.NewReader(buf)))
 }
 
@@ -171,10 +226,12 @@ func (a *Archive) BucketExists(bucket Hash) (bool, error) {
 }
 
 func (a *Archive) BucketSize(bucket Hash) (int64, error) {
+	a.stats.incrementRequests()
 	return a.backend.Size(BucketPath(bucket))
 }
 
 func (a *Archive) CategoryCheckpointExists(cat string, chk uint32) (bool, error) {
+	a.stats.incrementRequests()
 	return a.backend.Exists(CategoryCheckpointPath(cat, chk))
 }
 
@@ -307,14 +364,17 @@ func (a *Archive) PutRootHAS(has HistoryArchiveState, opts *CommandOptions) erro
 }
 
 func (a *Archive) ListBucket(dp DirPrefix) (chan string, chan error) {
+	a.stats.incrementRequests()
 	return a.backend.ListFiles(path.Join("bucket", dp.Path()))
 }
 
 func (a *Archive) ListAllBuckets() (chan string, chan error) {
+	a.stats.incrementRequests()
 	return a.backend.ListFiles("bucket")
 }
 
 func (a *Archive) ListAllBucketHashes() (chan Hash, chan error) {
+	a.stats.incrementRequests()
 	sch, errs := a.backend.ListFiles("bucket")
 	ch := make(chan Hash)
 	rx := regexp.MustCompile("bucket" + hexPrefixPat + "bucket-([0-9a-f]{64})\\.xdr\\.gz$")
@@ -336,6 +396,7 @@ func (a *Archive) ListCategoryCheckpoints(cat string, pth string) (chan uint32, 
 	rx := regexp.MustCompile(cat + hexPrefixPat + cat +
 		"-([0-9a-f]{8})\\." + regexp.QuoteMeta(ext) + "$")
 	sch, errs := a.backend.ListFiles(path.Join(cat, pth))
+	a.stats.incrementRequests()
 	ch := make(chan uint32)
 	errs = makeErrorPump(errs)
 
@@ -372,7 +433,6 @@ func (a *Archive) GetXdrStream(pth string) (*XdrStream, error) {
 	if !strings.HasSuffix(pth, ".xdr.gz") {
 		return nil, errors.New("File has non-.xdr.gz suffix: " + pth)
 	}
-
 	rdr, err := a.cachedGet(pth)
 	if err != nil {
 		return nil, err
@@ -391,6 +451,7 @@ func (a *Archive) cachedGet(pth string) (io.ReadCloser, error) {
 		a.cache.Evict(pth)
 	}
 
+	a.stats.incrementDownloads()
 	return a.backend.GetFile(pth)
 }
 
@@ -401,6 +462,7 @@ func (a *Archive) cachedExists(pth string) (bool, error) {
 		}
 	}
 
+	a.stats.incrementRequests()
 	return a.backend.Exists(pth)
 }
 
@@ -467,6 +529,7 @@ func Connect(u string, opts ConnectOptions) (*Archive, error) {
 		arch.cache = cache
 	}
 
+	arch.stats = archiveStats{backendName: parsed.String()}
 	return &arch, nil
 }
 

@@ -32,7 +32,6 @@ func NewArchivePool(archiveURLs []string, config ConnectOptions) (ArchivePool, e
 	var validArchives ArchivePool
 	for _, url := range archiveURLs {
 		archive, err := Connect(url, config)
-
 		if err != nil {
 			lastErr = errors.Wrapf(err, "Error connecting to history archive (%s)", url)
 			continue
@@ -48,8 +47,18 @@ func NewArchivePool(archiveURLs []string, config ConnectOptions) (ArchivePool, e
 	return validArchives, nil
 }
 
+func (pa ArchivePool) GetStats() []ArchiveStats {
+	stats := []ArchiveStats{}
+	for _, archive := range pa {
+		if len(archive.GetStats()) == 1 {
+			stats = append(stats, archive.GetStats()[0])
+		}
+	}
+	return stats
+}
+
 // Ensure the pool conforms to the ArchiveInterface
-var _ ArchiveInterface = ArchivePool{}
+var _ ArchiveInterface = &ArchivePool{}
 
 // Below are the ArchiveInterface method implementations.
 
