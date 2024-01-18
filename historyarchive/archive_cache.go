@@ -26,7 +26,12 @@ func MakeArchiveBucketCache(opts CacheOptions) (*ArchiveBucketCache, error) {
 	log_ := log.
 		WithField("subservice", "fs-cache").
 		WithField("path", opts.Path).
-		WithField("cap", 100)
+		WithField("cap", opts.MaxFiles)
+
+	if _, err := os.Stat(opts.Path); err == nil || os.IsExist(err) {
+		log_.Warnf("Cache directory already exists, removing")
+		os.RemoveAll(opts.Path)
+	}
 
 	backend := &ArchiveBucketCache{
 		path: opts.Path,
