@@ -42,8 +42,9 @@ func MakeArchiveBucketCache(opts CacheOptions) (*ArchiveBucketCache, error) {
 	if err != nil {
 		return &ArchiveBucketCache{}, err
 	}
-
 	backend.lru = cache
+
+	log_.Info("Bucket cache initialized")
 	return backend, nil
 }
 
@@ -78,11 +79,12 @@ func (abc *ArchiveBucketCache) GetFile(
 		if err != nil {
 			// If there's some local FS error, we can still continue with the
 			// remote version, so just log it and continue.
-			L.WithError(err).Error("Caching ledger failed")
+			L.WithError(err).Warn("Creating cache file failed")
 			return remote, nil
 		}
 
 		return teeReadCloser(remote, local, func() error {
+			L.Debug("Download complete: removing lockfile")
 			return os.Remove(NameLockfile(localPath))
 		}), nil
 	}

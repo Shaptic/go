@@ -373,18 +373,19 @@ func (a *Archive) GetXdrStream(pth string) (*XdrStream, error) {
 		return nil, errors.New("File has non-.xdr.gz suffix: " + pth)
 	}
 
-	var err error
-	var rdr io.ReadCloser
-	if a.cache != nil {
-		rdr, err = a.cache.GetFile(pth, a.backend)
-	} else {
-		rdr, err = a.backend.GetFile(pth)
-	}
-
+	rdr, err := a.cachedGet(pth)
 	if err != nil {
 		return nil, err
 	}
 	return NewXdrGzStream(rdr)
+}
+
+func (a *Archive) cachedGet(pth string) (io.ReadCloser, error) {
+	if a.cache != nil {
+		return a.cache.GetFile(pth, a.backend)
+	}
+
+	return a.backend.GetFile(pth)
 }
 
 func Connect(u string, opts ConnectOptions) (*Archive, error) {

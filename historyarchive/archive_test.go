@@ -14,6 +14,7 @@ import (
 	"io/ioutil"
 	"math/big"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -39,7 +40,13 @@ func GetTestS3Archive() *Archive {
 }
 
 func GetTestMockArchive() *Archive {
-	return MustConnect("mock://test", ConnectOptions{CheckpointFrequency: 64})
+	return MustConnect("mock://test", ConnectOptions{
+		CheckpointFrequency: 64,
+		CacheConfig: CacheOptions{
+			Cache:    true,
+			Path:     filepath.Join(os.TempDir(), "history-archive-test-cache"),
+			MaxFiles: 2,
+		}})
 }
 
 var tmpdirs []string
@@ -607,7 +614,9 @@ func TestGetLedgers(t *testing.T) {
 		[]xdrEntry{results[0], results[1], results[2]},
 	)
 
-	ledgers, err := archive.GetLedgers(1000, 1002)
+	_, err = archive.GetLedgers(1000, 1002)
+	assert.NoError(t, err)
+	ledgers, err := archive.GetLedgers(1000, 1002) // invoke cache
 	assert.NoError(t, err)
 	assert.Len(t, ledgers, 3)
 	for i, seq := range []uint32{1000, 1001, 1002} {
