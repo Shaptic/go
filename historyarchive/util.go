@@ -7,10 +7,11 @@ package historyarchive
 import (
 	"bufio"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"io"
 	"net/http"
 	"path"
+
+	log "github.com/sirupsen/logrus"
 )
 
 func makeTicker(onTick func(uint)) chan bool {
@@ -143,7 +144,7 @@ func logReq(r *http.Request) {
 		return
 	}
 	logFields := log.Fields{"method": r.Method, "url": r.URL.String()}
-	log.WithFields(logFields).Trace("http: Req")
+	log.WithFields(logFields).Info("http: Req")
 }
 
 func logResp(r *http.Response) {

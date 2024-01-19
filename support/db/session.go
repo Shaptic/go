@@ -29,7 +29,7 @@ func (s *Session) Begin(ctx context.Context) error {
 
 		return errors.Wrap(err, "beginx failed")
 	}
-	log.Debug("sql: begin")
+	// log.Debug("sql: begin")
 	s.tx = tx
 	s.txOptions = nil
 	return nil
@@ -50,7 +50,7 @@ func (s *Session) BeginTx(ctx context.Context, opts *sql.TxOptions) error {
 
 		return errors.Wrap(err, "beginTx failed")
 	}
-	log.Debug("sql: begin")
+	// log.Debug("sql: begin")
 
 	s.tx = tx
 	s.txOptions = opts
@@ -88,7 +88,7 @@ func (s *Session) Commit() error {
 	}
 
 	err := s.tx.Commit()
-	log.Debug("sql: commit")
+	// log.Debug("sql: commit")
 	s.tx = nil
 	s.txOptions = nil
 
@@ -314,7 +314,7 @@ func (s *Session) Rollback() error {
 	}
 
 	err := s.tx.Rollback()
-	log.Debug("sql: rollback")
+	// log.Debug("sql: rollback")
 	s.tx = nil
 	s.txOptions = nil
 
@@ -414,9 +414,9 @@ func (s *Session) conn() Conn {
 }
 
 func (s *Session) log(ctx context.Context, typ string, start time.Time, query string, args []interface{}) {
-	log.
-		WithField("args", args).
-		WithField("sql", query).
-		WithField("dur", time.Since(start).String()).
-		Debugf("sql: %s", typ)
+	// log.
+	// 	WithField("args", args).
+	// 	WithField("sql", query).
+	// 	WithField("dur", time.Since(start).String()).
+	// 	Debugf("sql: %s", typ)
 }

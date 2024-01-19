@@ -2,6 +2,7 @@ package ingest
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -309,6 +310,7 @@ func (r *CheckpointChangeReader) streamBucketContents(hash historyarchive.Hash, 
 	}
 
 	defer func() {
+		fmt.Println("Closing", rdr, "in streamBucketContents() defer")
 		err := rdr.Close()
 		if err != nil {
 			r.readChan <- r.error(errors.Wrap(err, "Error closing xdr stream"))

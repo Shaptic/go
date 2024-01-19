@@ -123,6 +123,7 @@ func (x *XdrStream) Close() error {
 		}
 	}
 
+	fmt.Println("Closing readers in XdrStream.Close()")
 	return x.closeReaders()
 }
 
@@ -134,11 +135,7 @@ func (x *XdrStream) closeReaders() error {
 			err = err2
 		}
 	}
-	if x.rdr2 != nil {
-		if err2 := x.rdr2.Close(); err2 != nil {
-			err = err2
-		}
-	}
+
 	if x.gzipReader != nil {
 		if err2 := x.gzipReader.Close(); err2 != nil {
 			err = err2
