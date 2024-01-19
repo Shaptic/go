@@ -436,7 +436,6 @@ func Connect(u string, opts ConnectOptions) (*Archive, error) {
 		expectTxResultSetHashes: make(map[uint32]Hash),
 		actualTxResultSetHashes: make(map[uint32]Hash),
 		checkpointManager:       NewCheckpointManager(opts.CheckpointFrequency),
-		cache:                   nil,
 	}
 	for _, cat := range Categories() {
 		arch.checkpointFiles[cat] = make(map[uint32]bool)

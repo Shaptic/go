@@ -8,7 +8,7 @@ file. This project adheres to [Semantic Versioning](http://semver.org/).
 ### Fixed
 - Trade aggregation rebuild errors reported on `db reingest range` with parallel workers ([5168](https://github.com/stellar/go/pull/5168))
 - Http history archive requests now include a unique user agent ([5166](https://github.com/stellar/go/pull/5166))
-- Network usage has been significantly reduced with caching. Note: To support the cache, disk requirements may increase by up to 15GB ([5171](https://github.com/stellar/go/pull/5171)).
+- Network usage has been significantly reduced with caching. **Warning:** To support the cache, disk requirements may increase by up to 15GB ([5171](https://github.com/stellar/go/pull/5171)).
 
 ### Added
 - We now include metrics for history archive requests ([5166](https://github.com/stellar/go/pull/5166))

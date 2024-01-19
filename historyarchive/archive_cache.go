@@ -112,13 +112,9 @@ func (abc *ArchiveBucketCache) Exists(filepath string) bool {
 	return abc.lru.Contains(path.Join(abc.path, filepath))
 }
 
-// Close purges the cache, then forwards the call to the wrapped backend.
+// Close purges the cache and cleans up the filesystem.
 func (abc *ArchiveBucketCache) Close() error {
-	// We only purge the cache, leaving the filesystem untouched:
-	// https://github.com/stellar/go/pull/4457#discussion_r929352643
 	abc.lru.Purge()
-
-	// Only bubble up the disk purging error if there is no other error.
 	return os.RemoveAll(abc.path)
 }
 
@@ -134,7 +130,7 @@ func (abc *ArchiveBucketCache) onEviction(key, value interface{}) {
 	if err := os.Remove(path); err != nil { // best effort removal
 		abc.log.WithError(err).
 			WithField("key", path).
-			Warn("removal failed after cache eviction")
+			Warn("Removal failed after cache eviction")
 	}
 }
 
@@ -171,6 +167,10 @@ type trc struct {
 }
 
 func (t trc) Close() error {
+	if t.closed {
+		return nil
+	}
+
 	return t.close()
 }
 

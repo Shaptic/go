@@ -230,7 +230,7 @@ func NewSystem(config Config) (System, error) {
 			CacheConfig: historyarchive.CacheOptions{
 				Cache:    true,
 				Path:     path.Join(config.CaptiveCoreStoragePath, "bucket-cache"),
-				MaxFiles: 25,
+				MaxFiles: 50,
 			},
 		},
 	)
