@@ -199,10 +199,7 @@ func (a *Archive) GetLedgerHeader(ledger uint32) (xdr.LedgerHeaderHistoryEntry, 
 	if err != nil {
 		return xdr.LedgerHeaderHistoryEntry{}, errors.Wrap(err, "error opening ledger stream")
 	}
-	defer func() {
-		fmt.Println("GetLedgerHeader, closing stream", xdrStream)
-		xdrStream.Close()
-	}()
+	defer xdrStream.Close()
 
 	for {
 		var ledgerHeader xdr.LedgerHeaderHistoryEntry
@@ -256,10 +253,7 @@ func (a *Archive) fetchCategory(cache map[uint32]*Ledger, category string, check
 	if err != nil {
 		return errors.Wrapf(err, "error opening %s stream", category)
 	}
-	defer func() {
-		fmt.Println("fetchCategory, closing stream", xdrStream)
-		xdrStream.Close()
-	}()
+	defer xdrStream.Close()
 
 	for {
 		switch category {
@@ -386,12 +380,10 @@ func (a *Archive) GetBucketPathForHash(hash Hash) string {
 }
 
 func (a *Archive) GetXdrStreamForHash(hash Hash) (*XdrStream, error) {
-	fmt.Printf("GetXdrStreamForHash: %v\n", hash)
 	return a.GetXdrStream(a.GetBucketPathForHash(hash))
 }
 
 func (a *Archive) GetXdrStream(pth string) (*XdrStream, error) {
-	fmt.Println("GetXdrStream", pth)
 	if !strings.HasSuffix(pth, ".xdr.gz") {
 		return nil, errors.New("File has non-.xdr.gz suffix: " + pth)
 	}

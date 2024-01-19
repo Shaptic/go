@@ -144,7 +144,7 @@ func logReq(r *http.Request) {
 		return
 	}
 	logFields := log.Fields{"method": r.Method, "url": r.URL.String()}
-	log.WithFields(logFields).Info("http: Req")
+	log.WithFields(logFields).Trace("http: Req")
 }
 
 func logResp(r *http.Response) {

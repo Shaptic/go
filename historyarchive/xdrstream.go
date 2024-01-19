@@ -123,7 +123,6 @@ func (x *XdrStream) Close() error {
 		}
 	}
 
-	fmt.Println("Closing readers in XdrStream.Close()")
 	return x.closeReaders()
 }
 
