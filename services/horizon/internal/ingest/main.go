@@ -231,7 +231,7 @@ func NewSystem(config Config) (System, error) {
 				Cache:    true,
 				Path:     path.Join(config.CaptiveCoreStoragePath, "bucket-cache"),
 				Log:      log.WithField("subservice", "ha-cache"),
-				MaxFiles: 50,
+				MaxFiles: 150,
 			},
 		},
 	)
