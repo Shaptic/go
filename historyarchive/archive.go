@@ -17,8 +17,9 @@ import (
 	"strings"
 	"sync"
 
+	log "github.com/sirupsen/logrus"
+
 	"github.com/stellar/go/support/errors"
-	"github.com/stellar/go/support/log"
 	"github.com/stellar/go/xdr"
 )
 
