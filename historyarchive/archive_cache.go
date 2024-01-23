@@ -6,7 +6,7 @@ import (
 	"path"
 
 	lru "github.com/hashicorp/golang-lru"
-	log "github.com/sirupsen/logrus"
+	"github.com/stellar/go/support/log"
 )
 
 type CacheOptions struct {

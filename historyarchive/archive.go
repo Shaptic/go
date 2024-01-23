@@ -17,9 +17,8 @@ import (
 	"strings"
 	"sync"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/stellar/go/support/errors"
+	"github.com/stellar/go/support/log"
 	"github.com/stellar/go/xdr"
 )
 
@@ -164,7 +163,7 @@ func (a *Archive) PutPathHAS(path string, has HistoryArchiveState, opts *Command
 		return err
 	}
 	if exists && !opts.Force {
-		log.Printf("skipping existing " + path)
+		log.Info("skipping existing " + path)
 		return nil
 	}
 	buf, err := json.MarshalIndent(has, "", "    ")

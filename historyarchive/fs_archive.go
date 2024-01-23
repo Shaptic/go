@@ -10,7 +10,7 @@ import (
 	"path"
 	"path/filepath"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/stellar/go/support/log"
 )
 
 type FsArchiveBackend struct {
