@@ -26,11 +26,9 @@ type ArchiveBucketCache struct {
 // MakeArchiveBucketCache creates a cache on the disk at the given path that
 // acts as an LRU cache, mimicking a particular upstream.
 func MakeArchiveBucketCache(opts CacheOptions) (*ArchiveBucketCache, error) {
-	var log_ *log.Entry
+	log_ := opts.Log
 	if opts.Log == nil {
 		log_ = log.WithField("subservice", "fs-cache")
-	} else {
-		log_ = opts.Log
 	}
 	log_ = log_.
 		WithField("path", opts.Path).
