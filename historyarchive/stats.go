@@ -46,15 +46,12 @@ func (as *archiveStats) incrementCacheBandwidth(bytes int64) {
 func (as *archiveStats) GetRequests() uint32 {
 	return as.requests.Load()
 }
-
 func (as *archiveStats) GetDownloads() uint32 {
 	return as.fileDownloads.Load()
 }
-
 func (as *archiveStats) GetUploads() uint32 {
 	return as.fileUploads.Load()
 }
-
 func (as *archiveStats) GetBackendName() string {
 	return as.backendName
 }

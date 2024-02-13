@@ -23,6 +23,7 @@ import (
 	"github.com/stellar/go/support/db"
 	"github.com/stellar/go/support/errors"
 	logpkg "github.com/stellar/go/support/log"
+	"github.com/stellar/go/support/storage"
 )
 
 const (
@@ -230,12 +231,13 @@ func NewSystem(config Config) (System, error) {
 
 	archive, err := historyarchive.NewArchivePool(
 		config.HistoryArchiveURLs,
-		historyarchive.ConnectOptions{
-			Context:             ctx,
+		historyarchive.ArchiveOptions{
 			NetworkPassphrase:   config.NetworkPassphrase,
 			CheckpointFrequency: config.CheckpointFrequency,
-			UserAgent:           fmt.Sprintf("horizon/%s golang/%s", apkg.Version(), runtime.Version()),
 			CachePath:           cachingPath,
+			ConnectOptions: storage.ConnectOptions{
+				UserAgent: fmt.Sprintf("horizon/%s golang/%s", apkg.Version(), runtime.Version()),
+			},
 		},
 	)
 	if err != nil {
@@ -408,7 +410,13 @@ func (s *system) initMetrics() {
 	s.metrics.HistoryArchiveStatsCounter = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: "horizon", Subsystem: "ingest", Name: "history_archive_stats_total",
-			Help: "counters of different history archive stats",
+			Help: "Counters of different history archive requests.  " +
+				"'source' label will provide name/address of the physical history archive server from the pool for which a request may be sent.  " +
+				"'type' label will further categorize the potential request into specific requests, " +
+				"'file_downloads' - the count of files downloaded from an archive server, " +
+				"'file_uploads' - the count of files uploaded to an archive server, " +
+				"'requests' - the count of all http requests(includes both queries and file downloads) sent to an archive server, " +
+				"'cache_hits' - the count of requests for an archive file that were found on local cache instead, no download request sent to archive server.",
 		},
 		[]string{"source", "type"},
 	)

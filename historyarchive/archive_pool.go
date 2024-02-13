@@ -21,7 +21,7 @@ type ArchivePool []ArchiveInterface
 // If none of the archives work, this returns the error message of the last
 // failed archive. Note that the errors for each individual archive are hard to
 // track if there's success overall.
-func NewArchivePool(archiveURLs []string, config ConnectOptions) (ArchivePool, error) {
+func NewArchivePool(archiveURLs []string, opts ArchiveOptions) (ArchivePool, error) {
 	if len(archiveURLs) <= 0 {
 		return nil, errors.New("No history archives provided")
 	}
@@ -31,7 +31,7 @@ func NewArchivePool(archiveURLs []string, config ConnectOptions) (ArchivePool, e
 	// Try connecting to all of the listed archives, but only store valid ones.
 	var validArchives ArchivePool
 	for _, url := range archiveURLs {
-		archive, err := Connect(url, config)
+		archive, err := Connect(url, opts)
 		if err != nil {
 			lastErr = errors.Wrapf(err, "Error connecting to history archive (%s)", url)
 			continue
@@ -50,9 +50,7 @@ func NewArchivePool(archiveURLs []string, config ConnectOptions) (ArchivePool, e
 func (pa ArchivePool) GetStats() []ArchiveStats {
 	stats := []ArchiveStats{}
 	for _, archive := range pa {
-		if len(archive.GetStats()) == 1 {
-			stats = append(stats, archive.GetStats()[0])
-		}
+		stats = append(stats, archive.GetStats()...)
 	}
 	return stats
 }
