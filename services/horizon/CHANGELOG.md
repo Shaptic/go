@@ -20,7 +20,6 @@ file. This project adheres to [Semantic Versioning](http://semver.org/).
 - Fixed incorrect duration for ingestion processor metric ([5216](https://github.com/stellar/go/pull/5216))
 - Fixed sql performance on account transactions query ([5229](https://github.com/stellar/go/pull/5229))
 
-
 ## 2.28.4
 
 ### Added
