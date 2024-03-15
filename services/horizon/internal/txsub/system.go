@@ -4,9 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/stellar/go/services/horizon/internal/ledger"
 	"sync"
 	"time"
+
+	"github.com/stellar/go/services/horizon/internal/ledger"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stellar/go/services/horizon/internal/db2/history"
@@ -18,7 +19,9 @@ type HorizonDB interface {
 	GetLatestHistoryLedger(ctx context.Context) (uint32, error)
 	PreFilteredTransactionByHash(ctx context.Context, dest interface{}, hash string) error
 	TransactionByHash(ctx context.Context, dest interface{}, hash string) error
-	AllTransactionsByHashesSinceLedger(ctx context.Context, hashes []string, sinceLedgerSeq uint32) ([]history.Transaction, error)
+	AllTransactionsByHashesSinceLedger(
+		ctx context.Context, hashes []string, sinceLedgerSeq uint32,
+		includeFiltered bool) ([]history.Transaction, error)
 	GetSequenceNumbers(ctx context.Context, addresses []string) (map[string]uint64, error)
 	BeginTx(context.Context, *sql.TxOptions) error
 	Rollback() error
@@ -42,6 +45,7 @@ type System struct {
 	SubmissionTimeout time.Duration
 	Log               *log.Entry
 	LedgerState       ledger.StateInterface
+	FilteredIngestion bool
 
 	Metrics struct {
 		// SubmissionDuration exposes timing metrics about the rate and latency of
@@ -312,7 +316,8 @@ func (sys *System) Tick(ctx context.Context) {
 			sinceLedgerSeq = 0
 		}
 
-		txs, err := db.AllTransactionsByHashesSinceLedger(ctx, pending, uint32(sinceLedgerSeq))
+		txs, err := db.AllTransactionsByHashesSinceLedger(ctx, pending,
+			uint32(sinceLedgerSeq), sys.FilteredIngestion)
 		if err != nil && !db.NoRows(err) {
 			logger.WithError(err).Error("error getting transactions by hashes")
 			return

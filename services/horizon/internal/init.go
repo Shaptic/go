@@ -236,6 +236,7 @@ func initSubmissionSystem(app *App) {
 		DB: func(ctx context.Context) txsub.HorizonDB {
 			return &history.Q{SessionInterface: app.HorizonSession()}
 		},
-		LedgerState: app.ledgerState,
+		LedgerState:       app.ledgerState,
+		FilteredIngestion: app.config.EnableIngestionFiltering,
 	}
 }

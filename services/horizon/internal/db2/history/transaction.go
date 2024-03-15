@@ -30,21 +30,34 @@ func (q *Q) PreFilteredTransactionByHash(ctx context.Context, dest interface{}, 
 
 // TransactionsByHashesSinceLedger fetches transactions from `history_transactions_filtered_tmp`
 // table which match the given hash since the given ledger sequence (for perf reasons).
-func (q *Q) AllTransactionsByHashesSinceLedger(ctx context.Context, hashes []string, sinceLedgerSeq uint32) ([]Transaction, error) {
+func (q *Q) AllTransactionsByHashesSinceLedger(
+	ctx context.Context,
+	hashes []string,
+	sinceLedgerSeq uint32,
+	includeFiltered bool,
+) ([]Transaction, error) {
 	var dest []Transaction
 	innerOrOuterAndSeqGtEq :=
-		sq.And{sq.GtOrEq{"ht.ledger_sequence": sinceLedgerSeq}, sq.Or{sq.Eq{"ht.transaction_hash": hashes}, sq.Eq{"ht.inner_transaction_hash": hashes}}}
+		sq.And{
+			sq.GtOrEq{"ht.ledger_sequence": sinceLedgerSeq},
+			sq.Or{
+				sq.Eq{"ht.transaction_hash": hashes},
+				sq.Eq{"ht.inner_transaction_hash": hashes}}}
 
-	preFilteredTxs := selectTransactionPreFilteredTmp.Where(innerOrOuterAndSeqGtEq)
 	historyTxs := selectTransactionHistory.Where(innerOrOuterAndSeqGtEq)
+	query := historyTxs
 
-	preFilteredTxsString, args, err := preFilteredTxs.ToSql()
-	if err != nil {
-		return nil, errors.Wrap(err, "could not get string for un filtered sql query")
+	if includeFiltered {
+		preFilteredTxs := selectTransactionPreFilteredTmp.Where(innerOrOuterAndSeqGtEq)
+		preFilteredTxsString, args, err := preFilteredTxs.ToSql()
+		if err != nil {
+			return nil, errors.Wrap(err, "could not get string for un filtered sql query")
+		}
+
+		query = historyTxs.Suffix("UNION ALL "+preFilteredTxsString, args...)
 	}
 
-	union := historyTxs.Suffix("UNION ALL "+preFilteredTxsString, args...)
-	if err := q.Select(ctx, &dest, union); err != nil {
+	if err := q.Select(ctx, &dest, query); err != nil {
 		return nil, err
 	}
 	return dest, nil

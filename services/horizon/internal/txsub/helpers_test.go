@@ -9,6 +9,7 @@ package txsub
 import (
 	"context"
 	"database/sql"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stellar/go/services/horizon/internal/ledger"
 
@@ -57,8 +58,11 @@ func (m *mockDBQ) GetSequenceNumbers(ctx context.Context, addresses []string) (m
 	return args.Get(0).(map[string]uint64), args.Error(1)
 }
 
-func (m *mockDBQ) AllTransactionsByHashesSinceLedger(ctx context.Context, hashes []string, sinceLedgerSeq uint32) ([]history.Transaction, error) {
-	args := m.Called(ctx, hashes, sinceLedgerSeq)
+func (m *mockDBQ) AllTransactionsByHashesSinceLedger(
+	ctx context.Context,
+	hashes []string, sinceLedgerSeq uint32, includeFiltered bool,
+) ([]history.Transaction, error) {
+	args := m.Called(ctx, hashes, sinceLedgerSeq, includeFiltered)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
