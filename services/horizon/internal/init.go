@@ -237,6 +237,6 @@ func initSubmissionSystem(app *App) {
 			return &history.Q{SessionInterface: app.HorizonSession()}
 		},
 		LedgerState:       app.ledgerState,
-		FilteredIngestion: app.config.EnableIngestionFiltering,
+		FilteringDisabled: !app.config.EnableIngestionFiltering,
 	}
 }

@@ -45,7 +45,7 @@ type System struct {
 	SubmissionTimeout time.Duration
 	Log               *log.Entry
 	LedgerState       ledger.StateInterface
-	FilteredIngestion bool
+	FilteringDisabled bool
 
 	Metrics struct {
 		// SubmissionDuration exposes timing metrics about the rate and latency of
@@ -316,8 +316,10 @@ func (sys *System) Tick(ctx context.Context) {
 			sinceLedgerSeq = 0
 		}
 
-		txs, err := db.AllTransactionsByHashesSinceLedger(ctx, pending,
-			uint32(sinceLedgerSeq), sys.FilteredIngestion)
+		txs, err := db.AllTransactionsByHashesSinceLedger(ctx,
+			pending,
+			uint32(sinceLedgerSeq),
+			!sys.FilteringDisabled)
 		if err != nil && !db.NoRows(err) {
 			logger.WithError(err).Error("error getting transactions by hashes")
 			return
