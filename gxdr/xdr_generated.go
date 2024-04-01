@@ -1197,8 +1197,39 @@ type DiagnosticEvent struct {
 	Event                    ContractEvent
 }
 
-type SorobanTransactionMeta struct {
+type SorobanTransactionMetaExtV1 struct {
 	Ext ExtensionPoint
+	// Total amount (in stroops) that has been charged for non-refundable
+	// Soroban resources.
+	// Non-refundable resources are charged based on the usage declared in
+	// the transaction envelope (such as `instructions`, `readBytes` etc.) and
+	// is charged regardless of the success of the transaction.
+	TotalNonRefundableResourceFeeCharged Int64
+	// Total amount (in stroops) that has been charged for refundable
+	// Soroban resource fees.
+	// Currently this comprises the rent fee (`rentFeeCharged`) and the
+	// fee for the events and return value.
+	// Refundable resources are charged based on the actual resources usage.
+	// Since currently refundable resources are only used for the successful
+	// transactions, this will be `0` for failed transactions.
+	TotalRefundableResourceFeeCharged Int64
+	// Amount (in stroops) that has been charged for rent.
+	// This is a part of `totalNonRefundableResourceFeeCharged`.
+	RentFeeCharged Int64
+}
+
+type SorobanTransactionMetaExt struct {
+	// The union discriminant V selects among the following arms:
+	//   0:
+	//      void
+	//   1:
+	//      V1() *SorobanTransactionMetaExtV1
+	V  int32
+	_u interface{}
+}
+
+type SorobanTransactionMeta struct {
+	Ext SorobanTransactionMetaExt
 	// custom events populated by the
 	Events []ContractEvent
 	// contracts themselves.
@@ -1273,10 +1304,23 @@ type LedgerCloseMetaV0 struct {
 	ScpInfo []SCPHistoryEntry
 }
 
+type LedgerCloseMetaExtV1 struct {
+	Ext                ExtensionPoint
+	SorobanFeeWrite1KB Int64
+}
+
+type LedgerCloseMetaExt struct {
+	// The union discriminant V selects among the following arms:
+	//   0:
+	//      void
+	//   1:
+	//      V1() *LedgerCloseMetaExtV1
+	V  int32
+	_u interface{}
+}
+
 type LedgerCloseMetaV1 struct {
-	// We forgot to add an ExtensionPoint in v0 but at least
-	// we can add one now in v1.
-	Ext          ExtensionPoint
+	Ext          LedgerCloseMetaExt
 	LedgerHeader LedgerHeaderHistoryEntry
 	TxSet        GeneralizedTransactionSet
 	// NB: transactions are sorted in apply order here
@@ -11779,6 +11823,102 @@ func (v *DiagnosticEvent) XdrRecurse(x XDR, name string) {
 }
 func XDR_DiagnosticEvent(v *DiagnosticEvent) *DiagnosticEvent { return v }
 
+type XdrType_SorobanTransactionMetaExtV1 = *SorobanTransactionMetaExtV1
+
+func (v *SorobanTransactionMetaExtV1) XdrPointer() interface{}       { return v }
+func (SorobanTransactionMetaExtV1) XdrTypeName() string              { return "SorobanTransactionMetaExtV1" }
+func (v SorobanTransactionMetaExtV1) XdrValue() interface{}          { return v }
+func (v *SorobanTransactionMetaExtV1) XdrMarshal(x XDR, name string) { x.Marshal(name, v) }
+func (v *SorobanTransactionMetaExtV1) XdrRecurse(x XDR, name string) {
+	if name != "" {
+		name = x.Sprintf("%s.", name)
+	}
+	x.Marshal(x.Sprintf("%sext", name), XDR_ExtensionPoint(&v.Ext))
+	x.Marshal(x.Sprintf("%stotalNonRefundableResourceFeeCharged", name), XDR_Int64(&v.TotalNonRefundableResourceFeeCharged))
+	x.Marshal(x.Sprintf("%stotalRefundableResourceFeeCharged", name), XDR_Int64(&v.TotalRefundableResourceFeeCharged))
+	x.Marshal(x.Sprintf("%srentFeeCharged", name), XDR_Int64(&v.RentFeeCharged))
+}
+func XDR_SorobanTransactionMetaExtV1(v *SorobanTransactionMetaExtV1) *SorobanTransactionMetaExtV1 {
+	return v
+}
+
+var _XdrTags_SorobanTransactionMetaExt = map[int32]bool{
+	XdrToI32(0): true,
+	XdrToI32(1): true,
+}
+
+func (_ SorobanTransactionMetaExt) XdrValidTags() map[int32]bool {
+	return _XdrTags_SorobanTransactionMetaExt
+}
+func (u *SorobanTransactionMetaExt) V1() *SorobanTransactionMetaExtV1 {
+	switch u.V {
+	case 1:
+		if v, ok := u._u.(*SorobanTransactionMetaExtV1); ok {
+			return v
+		} else {
+			var zero SorobanTransactionMetaExtV1
+			u._u = &zero
+			return &zero
+		}
+	default:
+		XdrPanic("SorobanTransactionMetaExt.V1 accessed when V == %v", u.V)
+		return nil
+	}
+}
+func (u SorobanTransactionMetaExt) XdrValid() bool {
+	switch u.V {
+	case 0, 1:
+		return true
+	}
+	return false
+}
+func (u *SorobanTransactionMetaExt) XdrUnionTag() XdrNum32 {
+	return XDR_int32(&u.V)
+}
+func (u *SorobanTransactionMetaExt) XdrUnionTagName() string {
+	return "V"
+}
+func (u *SorobanTransactionMetaExt) XdrUnionBody() XdrType {
+	switch u.V {
+	case 0:
+		return nil
+	case 1:
+		return XDR_SorobanTransactionMetaExtV1(u.V1())
+	}
+	return nil
+}
+func (u *SorobanTransactionMetaExt) XdrUnionBodyName() string {
+	switch u.V {
+	case 0:
+		return ""
+	case 1:
+		return "V1"
+	}
+	return ""
+}
+
+type XdrType_SorobanTransactionMetaExt = *SorobanTransactionMetaExt
+
+func (v *SorobanTransactionMetaExt) XdrPointer() interface{}       { return v }
+func (SorobanTransactionMetaExt) XdrTypeName() string              { return "SorobanTransactionMetaExt" }
+func (v SorobanTransactionMetaExt) XdrValue() interface{}          { return v }
+func (v *SorobanTransactionMetaExt) XdrMarshal(x XDR, name string) { x.Marshal(name, v) }
+func (u *SorobanTransactionMetaExt) XdrRecurse(x XDR, name string) {
+	if name != "" {
+		name = x.Sprintf("%s.", name)
+	}
+	XDR_int32(&u.V).XdrMarshal(x, x.Sprintf("%sv", name))
+	switch u.V {
+	case 0:
+		return
+	case 1:
+		x.Marshal(x.Sprintf("%sv1", name), XDR_SorobanTransactionMetaExtV1(u.V1()))
+		return
+	}
+	XdrPanic("invalid V (%v) in SorobanTransactionMetaExt", u.V)
+}
+func XDR_SorobanTransactionMetaExt(v *SorobanTransactionMetaExt) *SorobanTransactionMetaExt { return v }
+
 type _XdrVec_unbounded_ContractEvent []ContractEvent
 
 func (_XdrVec_unbounded_ContractEvent) XdrBound() uint32 {
@@ -11903,7 +12043,7 @@ func (v *SorobanTransactionMeta) XdrRecurse(x XDR, name string) {
 	if name != "" {
 		name = x.Sprintf("%s.", name)
 	}
-	x.Marshal(x.Sprintf("%sext", name), XDR_ExtensionPoint(&v.Ext))
+	x.Marshal(x.Sprintf("%sext", name), XDR_SorobanTransactionMetaExt(&v.Ext))
 	x.Marshal(x.Sprintf("%sevents", name), (*_XdrVec_unbounded_ContractEvent)(&v.Events))
 	x.Marshal(x.Sprintf("%sreturnValue", name), XDR_SCVal(&v.ReturnValue))
 	x.Marshal(x.Sprintf("%sdiagnosticEvents", name), (*_XdrVec_unbounded_DiagnosticEvent)(&v.DiagnosticEvents))
@@ -12385,6 +12525,98 @@ func (v *LedgerCloseMetaV0) XdrRecurse(x XDR, name string) {
 }
 func XDR_LedgerCloseMetaV0(v *LedgerCloseMetaV0) *LedgerCloseMetaV0 { return v }
 
+type XdrType_LedgerCloseMetaExtV1 = *LedgerCloseMetaExtV1
+
+func (v *LedgerCloseMetaExtV1) XdrPointer() interface{}       { return v }
+func (LedgerCloseMetaExtV1) XdrTypeName() string              { return "LedgerCloseMetaExtV1" }
+func (v LedgerCloseMetaExtV1) XdrValue() interface{}          { return v }
+func (v *LedgerCloseMetaExtV1) XdrMarshal(x XDR, name string) { x.Marshal(name, v) }
+func (v *LedgerCloseMetaExtV1) XdrRecurse(x XDR, name string) {
+	if name != "" {
+		name = x.Sprintf("%s.", name)
+	}
+	x.Marshal(x.Sprintf("%sext", name), XDR_ExtensionPoint(&v.Ext))
+	x.Marshal(x.Sprintf("%ssorobanFeeWrite1KB", name), XDR_Int64(&v.SorobanFeeWrite1KB))
+}
+func XDR_LedgerCloseMetaExtV1(v *LedgerCloseMetaExtV1) *LedgerCloseMetaExtV1 { return v }
+
+var _XdrTags_LedgerCloseMetaExt = map[int32]bool{
+	XdrToI32(0): true,
+	XdrToI32(1): true,
+}
+
+func (_ LedgerCloseMetaExt) XdrValidTags() map[int32]bool {
+	return _XdrTags_LedgerCloseMetaExt
+}
+func (u *LedgerCloseMetaExt) V1() *LedgerCloseMetaExtV1 {
+	switch u.V {
+	case 1:
+		if v, ok := u._u.(*LedgerCloseMetaExtV1); ok {
+			return v
+		} else {
+			var zero LedgerCloseMetaExtV1
+			u._u = &zero
+			return &zero
+		}
+	default:
+		XdrPanic("LedgerCloseMetaExt.V1 accessed when V == %v", u.V)
+		return nil
+	}
+}
+func (u LedgerCloseMetaExt) XdrValid() bool {
+	switch u.V {
+	case 0, 1:
+		return true
+	}
+	return false
+}
+func (u *LedgerCloseMetaExt) XdrUnionTag() XdrNum32 {
+	return XDR_int32(&u.V)
+}
+func (u *LedgerCloseMetaExt) XdrUnionTagName() string {
+	return "V"
+}
+func (u *LedgerCloseMetaExt) XdrUnionBody() XdrType {
+	switch u.V {
+	case 0:
+		return nil
+	case 1:
+		return XDR_LedgerCloseMetaExtV1(u.V1())
+	}
+	return nil
+}
+func (u *LedgerCloseMetaExt) XdrUnionBodyName() string {
+	switch u.V {
+	case 0:
+		return ""
+	case 1:
+		return "V1"
+	}
+	return ""
+}
+
+type XdrType_LedgerCloseMetaExt = *LedgerCloseMetaExt
+
+func (v *LedgerCloseMetaExt) XdrPointer() interface{}       { return v }
+func (LedgerCloseMetaExt) XdrTypeName() string              { return "LedgerCloseMetaExt" }
+func (v LedgerCloseMetaExt) XdrValue() interface{}          { return v }
+func (v *LedgerCloseMetaExt) XdrMarshal(x XDR, name string) { x.Marshal(name, v) }
+func (u *LedgerCloseMetaExt) XdrRecurse(x XDR, name string) {
+	if name != "" {
+		name = x.Sprintf("%s.", name)
+	}
+	XDR_int32(&u.V).XdrMarshal(x, x.Sprintf("%sv", name))
+	switch u.V {
+	case 0:
+		return
+	case 1:
+		x.Marshal(x.Sprintf("%sv1", name), XDR_LedgerCloseMetaExtV1(u.V1()))
+		return
+	}
+	XdrPanic("invalid V (%v) in LedgerCloseMetaExt", u.V)
+}
+func XDR_LedgerCloseMetaExt(v *LedgerCloseMetaExt) *LedgerCloseMetaExt { return v }
+
 type _XdrVec_unbounded_LedgerKey []LedgerKey
 
 func (_XdrVec_unbounded_LedgerKey) XdrBound() uint32 {
@@ -12509,7 +12741,7 @@ func (v *LedgerCloseMetaV1) XdrRecurse(x XDR, name string) {
 	if name != "" {
 		name = x.Sprintf("%s.", name)
 	}
-	x.Marshal(x.Sprintf("%sext", name), XDR_ExtensionPoint(&v.Ext))
+	x.Marshal(x.Sprintf("%sext", name), XDR_LedgerCloseMetaExt(&v.Ext))
 	x.Marshal(x.Sprintf("%sledgerHeader", name), XDR_LedgerHeaderHistoryEntry(&v.LedgerHeader))
 	x.Marshal(x.Sprintf("%stxSet", name), XDR_GeneralizedTransactionSet(&v.TxSet))
 	x.Marshal(x.Sprintf("%stxProcessing", name), (*_XdrVec_unbounded_TransactionResultMeta)(&v.TxProcessing))

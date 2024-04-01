@@ -42,7 +42,7 @@ var XdrFilesSHA256 = map[string]string{
 	"xdr/Stellar-exporter.x":                "a00c83d02e8c8382e06f79a191f1fb5abd097a4bbcab8481c67467e3270e0529",
 	"xdr/Stellar-internal.x":                "227835866c1b2122d1eaf28839ba85ea7289d1cb681dda4ca619c2da3d71fe00",
 	"xdr/Stellar-ledger-entries.x":          "4f8f2324f567a40065f54f696ea1428740f043ea4154f5986d9f499ad00ac333",
-	"xdr/Stellar-ledger.x":                  "2c842f3fe6e269498af5467f849cf6818554e90babc845f34c87cda471298d0f",
+	"xdr/Stellar-ledger.x":                  "888152fb940b79a01ac00a5218ca91360cb0f01af7acc030d5805ebfec280203",
 	"xdr/Stellar-lighthorizon.x":            "1aac09eaeda224154f653a0c95f02167be0c110fc295bb41b756a080eb8c06df",
 	"xdr/Stellar-overlay.x":                 "de3957c58b96ae07968b3d3aebea84f83603e95322d1fa336360e13e3aba737a",
 	"xdr/Stellar-transaction.x":             "0d2b35a331a540b48643925d0869857236eb2487c02d340ea32e365e784ea2b8",
@@ -16349,11 +16349,284 @@ func (s DiagnosticEvent) xdrType() {}
 
 var _ xdrType = (*DiagnosticEvent)(nil)
 
+// SorobanTransactionMetaExtV1 is an XDR Struct defines as:
+//
+//	struct SorobanTransactionMetaExtV1
+//	 {
+//	     ExtensionPoint ext;
+//
+//	     // The following are the components of the overall Soroban resource fee
+//	     // charged for the transaction.
+//	     // The following relation holds:
+//	     // `resourceFeeCharged = totalNonRefundableResourceFeeCharged + totalRefundableResourceFeeCharged`
+//	     // where `resourceFeeCharged` is the overall fee charged for the
+//	     // transaction. Also, `resourceFeeCharged` <= `sorobanData.resourceFee`
+//	     // i.e.we never charge more than the declared resource fee.
+//	     // The inclusion fee for charged the Soroban transaction can be found using
+//	     // the following equation:
+//	     // `result.feeCharged = resourceFeeCharged + inclusionFeeCharged`.
+//
+//	     // Total amount (in stroops) that has been charged for non-refundable
+//	     // Soroban resources.
+//	     // Non-refundable resources are charged based on the usage declared in
+//	     // the transaction envelope (such as `instructions`, `readBytes` etc.) and
+//	     // is charged regardless of the success of the transaction.
+//	     int64 totalNonRefundableResourceFeeCharged;
+//	     // Total amount (in stroops) that has been charged for refundable
+//	     // Soroban resource fees.
+//	     // Currently this comprises the rent fee (`rentFeeCharged`) and the
+//	     // fee for the events and return value.
+//	     // Refundable resources are charged based on the actual resources usage.
+//	     // Since currently refundable resources are only used for the successful
+//	     // transactions, this will be `0` for failed transactions.
+//	     int64 totalRefundableResourceFeeCharged;
+//	     // Amount (in stroops) that has been charged for rent.
+//	     // This is a part of `totalNonRefundableResourceFeeCharged`.
+//	     int64 rentFeeCharged;
+//	 };
+type SorobanTransactionMetaExtV1 struct {
+	Ext                                  ExtensionPoint
+	TotalNonRefundableResourceFeeCharged Int64
+	TotalRefundableResourceFeeCharged    Int64
+	RentFeeCharged                       Int64
+}
+
+// EncodeTo encodes this value using the Encoder.
+func (s *SorobanTransactionMetaExtV1) EncodeTo(e *xdr.Encoder) error {
+	var err error
+	if err = s.Ext.EncodeTo(e); err != nil {
+		return err
+	}
+	if err = s.TotalNonRefundableResourceFeeCharged.EncodeTo(e); err != nil {
+		return err
+	}
+	if err = s.TotalRefundableResourceFeeCharged.EncodeTo(e); err != nil {
+		return err
+	}
+	if err = s.RentFeeCharged.EncodeTo(e); err != nil {
+		return err
+	}
+	return nil
+}
+
+var _ decoderFrom = (*SorobanTransactionMetaExtV1)(nil)
+
+// DecodeFrom decodes this value using the Decoder.
+func (s *SorobanTransactionMetaExtV1) DecodeFrom(d *xdr.Decoder, maxDepth uint) (int, error) {
+	if maxDepth == 0 {
+		return 0, fmt.Errorf("decoding SorobanTransactionMetaExtV1: %w", ErrMaxDecodingDepthReached)
+	}
+	maxDepth -= 1
+	var err error
+	var n, nTmp int
+	nTmp, err = s.Ext.DecodeFrom(d, maxDepth)
+	n += nTmp
+	if err != nil {
+		return n, fmt.Errorf("decoding ExtensionPoint: %w", err)
+	}
+	nTmp, err = s.TotalNonRefundableResourceFeeCharged.DecodeFrom(d, maxDepth)
+	n += nTmp
+	if err != nil {
+		return n, fmt.Errorf("decoding Int64: %w", err)
+	}
+	nTmp, err = s.TotalRefundableResourceFeeCharged.DecodeFrom(d, maxDepth)
+	n += nTmp
+	if err != nil {
+		return n, fmt.Errorf("decoding Int64: %w", err)
+	}
+	nTmp, err = s.RentFeeCharged.DecodeFrom(d, maxDepth)
+	n += nTmp
+	if err != nil {
+		return n, fmt.Errorf("decoding Int64: %w", err)
+	}
+	return n, nil
+}
+
+// MarshalBinary implements encoding.BinaryMarshaler.
+func (s SorobanTransactionMetaExtV1) MarshalBinary() ([]byte, error) {
+	b := bytes.Buffer{}
+	e := xdr.NewEncoder(&b)
+	err := s.EncodeTo(e)
+	return b.Bytes(), err
+}
+
+// UnmarshalBinary implements encoding.BinaryUnmarshaler.
+func (s *SorobanTransactionMetaExtV1) UnmarshalBinary(inp []byte) error {
+	r := bytes.NewReader(inp)
+	o := xdr.DefaultDecodeOptions
+	o.MaxInputLen = len(inp)
+	d := xdr.NewDecoderWithOptions(r, o)
+	_, err := s.DecodeFrom(d, o.MaxDepth)
+	return err
+}
+
+var (
+	_ encoding.BinaryMarshaler   = (*SorobanTransactionMetaExtV1)(nil)
+	_ encoding.BinaryUnmarshaler = (*SorobanTransactionMetaExtV1)(nil)
+)
+
+// xdrType signals that this type represents XDR values defined by this package.
+func (s SorobanTransactionMetaExtV1) xdrType() {}
+
+var _ xdrType = (*SorobanTransactionMetaExtV1)(nil)
+
+// SorobanTransactionMetaExt is an XDR Union defines as:
+//
+//	union SorobanTransactionMetaExt switch (int v)
+//	 {
+//	 case 0:
+//	     void;
+//	 case 1:
+//	     SorobanTransactionMetaExtV1 v1;
+//	 };
+type SorobanTransactionMetaExt struct {
+	V  int32
+	V1 *SorobanTransactionMetaExtV1
+}
+
+// SwitchFieldName returns the field name in which this union's
+// discriminant is stored
+func (u SorobanTransactionMetaExt) SwitchFieldName() string {
+	return "V"
+}
+
+// ArmForSwitch returns which field name should be used for storing
+// the value for an instance of SorobanTransactionMetaExt
+func (u SorobanTransactionMetaExt) ArmForSwitch(sw int32) (string, bool) {
+	switch int32(sw) {
+	case 0:
+		return "", true
+	case 1:
+		return "V1", true
+	}
+	return "-", false
+}
+
+// NewSorobanTransactionMetaExt creates a new  SorobanTransactionMetaExt.
+func NewSorobanTransactionMetaExt(v int32, value interface{}) (result SorobanTransactionMetaExt, err error) {
+	result.V = v
+	switch int32(v) {
+	case 0:
+		// void
+	case 1:
+		tv, ok := value.(SorobanTransactionMetaExtV1)
+		if !ok {
+			err = errors.New("invalid value, must be SorobanTransactionMetaExtV1")
+			return
+		}
+		result.V1 = &tv
+	}
+	return
+}
+
+// MustV1 retrieves the V1 value from the union,
+// panicing if the value is not set.
+func (u SorobanTransactionMetaExt) MustV1() SorobanTransactionMetaExtV1 {
+	val, ok := u.GetV1()
+
+	if !ok {
+		panic("arm V1 is not set")
+	}
+
+	return val
+}
+
+// GetV1 retrieves the V1 value from the union,
+// returning ok if the union's switch indicated the value is valid.
+func (u SorobanTransactionMetaExt) GetV1() (result SorobanTransactionMetaExtV1, ok bool) {
+	armName, _ := u.ArmForSwitch(int32(u.V))
+
+	if armName == "V1" {
+		result = *u.V1
+		ok = true
+	}
+
+	return
+}
+
+// EncodeTo encodes this value using the Encoder.
+func (u SorobanTransactionMetaExt) EncodeTo(e *xdr.Encoder) error {
+	var err error
+	if _, err = e.EncodeInt(int32(u.V)); err != nil {
+		return err
+	}
+	switch int32(u.V) {
+	case 0:
+		// Void
+		return nil
+	case 1:
+		if err = (*u.V1).EncodeTo(e); err != nil {
+			return err
+		}
+		return nil
+	}
+	return fmt.Errorf("V (int32) switch value '%d' is not valid for union SorobanTransactionMetaExt", u.V)
+}
+
+var _ decoderFrom = (*SorobanTransactionMetaExt)(nil)
+
+// DecodeFrom decodes this value using the Decoder.
+func (u *SorobanTransactionMetaExt) DecodeFrom(d *xdr.Decoder, maxDepth uint) (int, error) {
+	if maxDepth == 0 {
+		return 0, fmt.Errorf("decoding SorobanTransactionMetaExt: %w", ErrMaxDecodingDepthReached)
+	}
+	maxDepth -= 1
+	var err error
+	var n, nTmp int
+	u.V, nTmp, err = d.DecodeInt()
+	n += nTmp
+	if err != nil {
+		return n, fmt.Errorf("decoding Int: %w", err)
+	}
+	switch int32(u.V) {
+	case 0:
+		// Void
+		return n, nil
+	case 1:
+		u.V1 = new(SorobanTransactionMetaExtV1)
+		nTmp, err = (*u.V1).DecodeFrom(d, maxDepth)
+		n += nTmp
+		if err != nil {
+			return n, fmt.Errorf("decoding SorobanTransactionMetaExtV1: %w", err)
+		}
+		return n, nil
+	}
+	return n, fmt.Errorf("union SorobanTransactionMetaExt has invalid V (int32) switch value '%d'", u.V)
+}
+
+// MarshalBinary implements encoding.BinaryMarshaler.
+func (s SorobanTransactionMetaExt) MarshalBinary() ([]byte, error) {
+	b := bytes.Buffer{}
+	e := xdr.NewEncoder(&b)
+	err := s.EncodeTo(e)
+	return b.Bytes(), err
+}
+
+// UnmarshalBinary implements encoding.BinaryUnmarshaler.
+func (s *SorobanTransactionMetaExt) UnmarshalBinary(inp []byte) error {
+	r := bytes.NewReader(inp)
+	o := xdr.DefaultDecodeOptions
+	o.MaxInputLen = len(inp)
+	d := xdr.NewDecoderWithOptions(r, o)
+	_, err := s.DecodeFrom(d, o.MaxDepth)
+	return err
+}
+
+var (
+	_ encoding.BinaryMarshaler   = (*SorobanTransactionMetaExt)(nil)
+	_ encoding.BinaryUnmarshaler = (*SorobanTransactionMetaExt)(nil)
+)
+
+// xdrType signals that this type represents XDR values defined by this package.
+func (s SorobanTransactionMetaExt) xdrType() {}
+
+var _ xdrType = (*SorobanTransactionMetaExt)(nil)
+
 // SorobanTransactionMeta is an XDR Struct defines as:
 //
 //	struct SorobanTransactionMeta
 //	 {
-//	     ExtensionPoint ext;
+//	     SorobanTransactionMetaExt ext;
 //
 //	     ContractEvent events<>;             // custom events populated by the
 //	                                         // contracts themselves.
@@ -16365,7 +16638,7 @@ var _ xdrType = (*DiagnosticEvent)(nil)
 //	     DiagnosticEvent diagnosticEvents<>;
 //	 };
 type SorobanTransactionMeta struct {
-	Ext              ExtensionPoint
+	Ext              SorobanTransactionMetaExt
 	Events           []ContractEvent
 	ReturnValue      ScVal
 	DiagnosticEvents []DiagnosticEvent
@@ -16412,7 +16685,7 @@ func (s *SorobanTransactionMeta) DecodeFrom(d *xdr.Decoder, maxDepth uint) (int,
 	nTmp, err = s.Ext.DecodeFrom(d, maxDepth)
 	n += nTmp
 	if err != nil {
-		return n, fmt.Errorf("decoding ExtensionPoint: %w", err)
+		return n, fmt.Errorf("decoding SorobanTransactionMetaExt: %w", err)
 	}
 	var l uint32
 	l, nTmp, err = d.DecodeUint()
@@ -17370,13 +17643,238 @@ func (s LedgerCloseMetaV0) xdrType() {}
 
 var _ xdrType = (*LedgerCloseMetaV0)(nil)
 
+// LedgerCloseMetaExtV1 is an XDR Struct defines as:
+//
+//	struct LedgerCloseMetaExtV1
+//	 {
+//	     ExtensionPoint ext;
+//	     int64 sorobanFeeWrite1KB;
+//	 };
+type LedgerCloseMetaExtV1 struct {
+	Ext                ExtensionPoint
+	SorobanFeeWrite1Kb Int64
+}
+
+// EncodeTo encodes this value using the Encoder.
+func (s *LedgerCloseMetaExtV1) EncodeTo(e *xdr.Encoder) error {
+	var err error
+	if err = s.Ext.EncodeTo(e); err != nil {
+		return err
+	}
+	if err = s.SorobanFeeWrite1Kb.EncodeTo(e); err != nil {
+		return err
+	}
+	return nil
+}
+
+var _ decoderFrom = (*LedgerCloseMetaExtV1)(nil)
+
+// DecodeFrom decodes this value using the Decoder.
+func (s *LedgerCloseMetaExtV1) DecodeFrom(d *xdr.Decoder, maxDepth uint) (int, error) {
+	if maxDepth == 0 {
+		return 0, fmt.Errorf("decoding LedgerCloseMetaExtV1: %w", ErrMaxDecodingDepthReached)
+	}
+	maxDepth -= 1
+	var err error
+	var n, nTmp int
+	nTmp, err = s.Ext.DecodeFrom(d, maxDepth)
+	n += nTmp
+	if err != nil {
+		return n, fmt.Errorf("decoding ExtensionPoint: %w", err)
+	}
+	nTmp, err = s.SorobanFeeWrite1Kb.DecodeFrom(d, maxDepth)
+	n += nTmp
+	if err != nil {
+		return n, fmt.Errorf("decoding Int64: %w", err)
+	}
+	return n, nil
+}
+
+// MarshalBinary implements encoding.BinaryMarshaler.
+func (s LedgerCloseMetaExtV1) MarshalBinary() ([]byte, error) {
+	b := bytes.Buffer{}
+	e := xdr.NewEncoder(&b)
+	err := s.EncodeTo(e)
+	return b.Bytes(), err
+}
+
+// UnmarshalBinary implements encoding.BinaryUnmarshaler.
+func (s *LedgerCloseMetaExtV1) UnmarshalBinary(inp []byte) error {
+	r := bytes.NewReader(inp)
+	o := xdr.DefaultDecodeOptions
+	o.MaxInputLen = len(inp)
+	d := xdr.NewDecoderWithOptions(r, o)
+	_, err := s.DecodeFrom(d, o.MaxDepth)
+	return err
+}
+
+var (
+	_ encoding.BinaryMarshaler   = (*LedgerCloseMetaExtV1)(nil)
+	_ encoding.BinaryUnmarshaler = (*LedgerCloseMetaExtV1)(nil)
+)
+
+// xdrType signals that this type represents XDR values defined by this package.
+func (s LedgerCloseMetaExtV1) xdrType() {}
+
+var _ xdrType = (*LedgerCloseMetaExtV1)(nil)
+
+// LedgerCloseMetaExt is an XDR Union defines as:
+//
+//	union LedgerCloseMetaExt switch (int v)
+//	 {
+//	 case 0:
+//	     void;
+//	 case 1:
+//	     LedgerCloseMetaExtV1 v1;
+//	 };
+type LedgerCloseMetaExt struct {
+	V  int32
+	V1 *LedgerCloseMetaExtV1
+}
+
+// SwitchFieldName returns the field name in which this union's
+// discriminant is stored
+func (u LedgerCloseMetaExt) SwitchFieldName() string {
+	return "V"
+}
+
+// ArmForSwitch returns which field name should be used for storing
+// the value for an instance of LedgerCloseMetaExt
+func (u LedgerCloseMetaExt) ArmForSwitch(sw int32) (string, bool) {
+	switch int32(sw) {
+	case 0:
+		return "", true
+	case 1:
+		return "V1", true
+	}
+	return "-", false
+}
+
+// NewLedgerCloseMetaExt creates a new  LedgerCloseMetaExt.
+func NewLedgerCloseMetaExt(v int32, value interface{}) (result LedgerCloseMetaExt, err error) {
+	result.V = v
+	switch int32(v) {
+	case 0:
+		// void
+	case 1:
+		tv, ok := value.(LedgerCloseMetaExtV1)
+		if !ok {
+			err = errors.New("invalid value, must be LedgerCloseMetaExtV1")
+			return
+		}
+		result.V1 = &tv
+	}
+	return
+}
+
+// MustV1 retrieves the V1 value from the union,
+// panicing if the value is not set.
+func (u LedgerCloseMetaExt) MustV1() LedgerCloseMetaExtV1 {
+	val, ok := u.GetV1()
+
+	if !ok {
+		panic("arm V1 is not set")
+	}
+
+	return val
+}
+
+// GetV1 retrieves the V1 value from the union,
+// returning ok if the union's switch indicated the value is valid.
+func (u LedgerCloseMetaExt) GetV1() (result LedgerCloseMetaExtV1, ok bool) {
+	armName, _ := u.ArmForSwitch(int32(u.V))
+
+	if armName == "V1" {
+		result = *u.V1
+		ok = true
+	}
+
+	return
+}
+
+// EncodeTo encodes this value using the Encoder.
+func (u LedgerCloseMetaExt) EncodeTo(e *xdr.Encoder) error {
+	var err error
+	if _, err = e.EncodeInt(int32(u.V)); err != nil {
+		return err
+	}
+	switch int32(u.V) {
+	case 0:
+		// Void
+		return nil
+	case 1:
+		if err = (*u.V1).EncodeTo(e); err != nil {
+			return err
+		}
+		return nil
+	}
+	return fmt.Errorf("V (int32) switch value '%d' is not valid for union LedgerCloseMetaExt", u.V)
+}
+
+var _ decoderFrom = (*LedgerCloseMetaExt)(nil)
+
+// DecodeFrom decodes this value using the Decoder.
+func (u *LedgerCloseMetaExt) DecodeFrom(d *xdr.Decoder, maxDepth uint) (int, error) {
+	if maxDepth == 0 {
+		return 0, fmt.Errorf("decoding LedgerCloseMetaExt: %w", ErrMaxDecodingDepthReached)
+	}
+	maxDepth -= 1
+	var err error
+	var n, nTmp int
+	u.V, nTmp, err = d.DecodeInt()
+	n += nTmp
+	if err != nil {
+		return n, fmt.Errorf("decoding Int: %w", err)
+	}
+	switch int32(u.V) {
+	case 0:
+		// Void
+		return n, nil
+	case 1:
+		u.V1 = new(LedgerCloseMetaExtV1)
+		nTmp, err = (*u.V1).DecodeFrom(d, maxDepth)
+		n += nTmp
+		if err != nil {
+			return n, fmt.Errorf("decoding LedgerCloseMetaExtV1: %w", err)
+		}
+		return n, nil
+	}
+	return n, fmt.Errorf("union LedgerCloseMetaExt has invalid V (int32) switch value '%d'", u.V)
+}
+
+// MarshalBinary implements encoding.BinaryMarshaler.
+func (s LedgerCloseMetaExt) MarshalBinary() ([]byte, error) {
+	b := bytes.Buffer{}
+	e := xdr.NewEncoder(&b)
+	err := s.EncodeTo(e)
+	return b.Bytes(), err
+}
+
+// UnmarshalBinary implements encoding.BinaryUnmarshaler.
+func (s *LedgerCloseMetaExt) UnmarshalBinary(inp []byte) error {
+	r := bytes.NewReader(inp)
+	o := xdr.DefaultDecodeOptions
+	o.MaxInputLen = len(inp)
+	d := xdr.NewDecoderWithOptions(r, o)
+	_, err := s.DecodeFrom(d, o.MaxDepth)
+	return err
+}
+
+var (
+	_ encoding.BinaryMarshaler   = (*LedgerCloseMetaExt)(nil)
+	_ encoding.BinaryUnmarshaler = (*LedgerCloseMetaExt)(nil)
+)
+
+// xdrType signals that this type represents XDR values defined by this package.
+func (s LedgerCloseMetaExt) xdrType() {}
+
+var _ xdrType = (*LedgerCloseMetaExt)(nil)
+
 // LedgerCloseMetaV1 is an XDR Struct defines as:
 //
 //	struct LedgerCloseMetaV1
 //	 {
-//	     // We forgot to add an ExtensionPoint in v0 but at least
-//	     // we can add one now in v1.
-//	     ExtensionPoint ext;
+//	     LedgerCloseMetaExt ext;
 //
 //	     LedgerHeaderHistoryEntry ledgerHeader;
 //
@@ -17405,7 +17903,7 @@ var _ xdrType = (*LedgerCloseMetaV0)(nil)
 //	     LedgerEntry evictedPersistentLedgerEntries<>;
 //	 };
 type LedgerCloseMetaV1 struct {
-	Ext                            ExtensionPoint
+	Ext                            LedgerCloseMetaExt
 	LedgerHeader                   LedgerHeaderHistoryEntry
 	TxSet                          GeneralizedTransactionSet
 	TxProcessing                   []TransactionResultMeta
@@ -17487,7 +17985,7 @@ func (s *LedgerCloseMetaV1) DecodeFrom(d *xdr.Decoder, maxDepth uint) (int, erro
 	nTmp, err = s.Ext.DecodeFrom(d, maxDepth)
 	n += nTmp
 	if err != nil {
-		return n, fmt.Errorf("decoding ExtensionPoint: %w", err)
+		return n, fmt.Errorf("decoding LedgerCloseMetaExt: %w", err)
 	}
 	nTmp, err = s.LedgerHeader.DecodeFrom(d, maxDepth)
 	n += nTmp
